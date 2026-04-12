@@ -35,8 +35,28 @@
   .card h2 { margin: 0 0 12px; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
   .card h2 .sum { color: #22c55e; font-size: 16px; font-weight: 600; }
   .row { display: grid; gap: 8px; margin-bottom: 10px; }
-  .stock-row { grid-template-columns: 1.2fr 1.4fr 0.8fr 1fr 1fr auto; }
+  .stock-row { grid-template-columns: 1.2fr 0.7fr 0.9fr 0.9fr 1fr 1fr auto; }
+  .profit-pos { color: #22c55e; }
+  .profit-neg { color: #ef4444; }
+  .broker-group {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .broker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #334155;
+  }
+  .broker-name { font-weight: 600; font-size: 16px; color: #a5b4fc; }
+  .broker-sum { color: #22c55e; font-weight: 600; margin-right: 8px; }
   .simple-row { grid-template-columns: 2fr 1fr auto; }
+  .cpf-row { grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr auto; }
   input, select {
     background: #0f172a;
     border: 1px solid #475569;
@@ -81,13 +101,13 @@
   </div>
 
   <div class="sections">
-    <div class="card">
+    <div class="card" style="grid-column: 1 / -1;">
       <h2>Stocks <span class="sum" id="sum-stocks">$0.00</span></h2>
-      <div class="headers stock-row row" style="margin-bottom:4px;">
-        <div>Broker</div><div>Symbol</div><div>Shares</div><div>Price</div><div>Value</div><div></div>
-      </div>
       <div id="stocks"></div>
-      <button class="btn-add" onclick="addStock()">+ Add Stock</button>
+      <div style="display:flex; gap:8px; margin-top:10px; align-items:center;">
+        <select id="new-broker" style="max-width:220px;"></select>
+        <button class="btn-add" style="margin-top:0;" onclick="addBroker()">+ Add Broker</button>
+      </div>
     </div>
 
     <div class="card">
@@ -109,6 +129,11 @@
     </div>
 
     <div class="card">
+      <h2>CPF <span class="sum" id="sum-cpf">$0.00</span></h2>
+      <div id="cpf"></div>
+    </div>
+
+    <div class="card">
       <h2>Liabilities <span class="sum" id="sum-liab" style="color:#ef4444;">$0.00</span></h2>
       <div id="liab"></div>
       <button class="btn-add" onclick="addLiab()">+ Add Liability</button>
@@ -122,12 +147,14 @@
 </div>
 
 <script>
-const BROKERS = ["Fidelity","Schwab","Vanguard","Robinhood","E*TRADE","Interactive Brokers","TD Ameritrade","Merrill","Webull","Other"];
+const BROKERS = ["Fidelity","Schwab","Vanguard","Robinhood","E*TRADE","Interactive Brokers","TD Ameritrade","Merrill","Webull","moomoo","Tiger Brokers","SGX","Other"];
 const STORAGE = "networth_v1";
 
 let data = load() || {
-  stocks: [], bonds: [], cash: [], other: [], liab: []
+  brokers: [], stocks: [], bonds: [], cash: [], other: [], cpf: {oa:0,sa:0,ma:0}, liab: []
 };
+if (!data.brokers) data.brokers = [...new Set(data.stocks.map(s=>s.broker))];
+if (!data.cpf || Array.isArray(data.cpf)) data.cpf = {oa:0,sa:0,ma:0};
 
 function load() {
   try { return JSON.parse(localStorage.getItem(STORAGE)); } catch { return null; }
@@ -140,41 +167,93 @@ function fmt(n) {
   return "$" + (Number(n)||0).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-function addStock() { data.stocks.push({broker:"Fidelity", symbol:"", shares:0, price:0}); save(); }
+function addStock(broker) { data.stocks.push({broker, symbol:"", shares:0, cost:0, price:0}); save(); }
+function addBroker() {
+  const sel = document.getElementById("new-broker");
+  const b = sel.value;
+  if (b && !data.brokers.includes(b)) { data.brokers.push(b); save(); }
+}
+function removeBroker(b) {
+  if (!confirm(`Remove ${b} and all its stocks?`)) return;
+  data.brokers = data.brokers.filter(x=>x!==b);
+  data.stocks = data.stocks.filter(s=>s.broker!==b);
+  save();
+}
 function addBond()  { data.bonds.push({name:"", value:0}); save(); }
 function addCash()  { data.cash.push({name:"", value:0}); save(); }
 function addOther() { data.other.push({name:"", value:0}); save(); }
 function addLiab()  { data.liab.push({name:"", value:0}); save(); }
+function updateCpf(key, val) { data.cpf[key] = parseFloat(val)||0; save(); }
 
 function del(list, i) { data[list].splice(i,1); save(); }
 function update(list, i, key, val) {
-  data[list][i][key] = (key==="shares"||key==="price"||key==="value") ? parseFloat(val)||0 : val;
+  const numeric = ["shares","price","cost","value","oa","sa","ma"];
+  data[list][i][key] = numeric.includes(key) ? parseFloat(val)||0 : val;
   localStorage.setItem(STORAGE, JSON.stringify(data));
   render();
 }
 
 function render() {
-  // Stocks
+  // Stocks — grouped by broker
   const stocksEl = document.getElementById("stocks");
   stocksEl.innerHTML = "";
   let stocksTotal = 0;
-  data.stocks.forEach((s, i) => {
-    const value = (s.shares||0) * (s.price||0);
-    stocksTotal += value;
-    const row = document.createElement("div");
-    row.className = "row stock-row";
-    row.innerHTML = `
-      <select onchange="update('stocks',${i},'broker',this.value)">
-        ${BROKERS.map(b=>`<option ${b===s.broker?"selected":""}>${b}</option>`).join("")}
-      </select>
-      <input placeholder="AAPL" value="${s.symbol}" oninput="update('stocks',${i},'symbol',this.value)"/>
-      <input type="number" step="0.0001" value="${s.shares}" oninput="update('stocks',${i},'shares',this.value)"/>
-      <input type="number" step="0.01" value="${s.price}" oninput="update('stocks',${i},'price',this.value)"/>
-      <div style="align-self:center; color:#22c55e; font-weight:600;">${fmt(value)}</div>
-      <button class="btn-del" onclick="del('stocks',${i})">×</button>
+
+  if (data.brokers.length === 0) {
+    stocksEl.innerHTML = `<div style="color:#94a3b8; padding:8px;">No brokers added yet. Pick one below and click "Add Broker".</div>`;
+  }
+
+  data.brokers.forEach(broker => {
+    const indices = data.stocks.map((s,i)=>({s,i})).filter(x=>x.s.broker===broker);
+    let brokerSum = 0;
+    indices.forEach(({s}) => brokerSum += (s.shares||0)*(s.price||0));
+    stocksTotal += brokerSum;
+
+    const group = document.createElement("div");
+    group.className = "broker-group";
+    const rowsHtml = indices.map(({s,i}) => {
+      const shares = s.shares||0;
+      const value = shares*(s.price||0);
+      const cost  = shares*(s.cost||0);
+      const pl    = value - cost;
+      const plPct = cost > 0 ? (pl/cost)*100 : 0;
+      const cls   = pl >= 0 ? "profit-pos" : "profit-neg";
+      const sign  = pl >= 0 ? "+" : "-";
+      const plText = cost > 0
+        ? `${sign}${fmt(Math.abs(pl))} (${sign}${Math.abs(plPct).toFixed(2)}%)`
+        : "—";
+      return `
+        <div class="row stock-row">
+          <input placeholder="AAPL" value="${s.symbol}" onchange="update('stocks',${i},'symbol',this.value)"/>
+          <input type="number" step="0.0001" value="${s.shares}" onchange="update('stocks',${i},'shares',this.value)"/>
+          <input type="number" step="0.01" value="${s.cost||0}" onchange="update('stocks',${i},'cost',this.value)"/>
+          <input type="number" step="0.01" value="${s.price}" onchange="update('stocks',${i},'price',this.value)"/>
+          <div style="align-self:center; color:#22c55e; font-weight:600;">${fmt(value)}</div>
+          <div style="align-self:center; font-weight:600;" class="${cls}">${plText}</div>
+          <button class="btn-del" onclick="del('stocks',${i})">×</button>
+        </div>`;
+    }).join("");
+
+    group.innerHTML = `
+      <div class="broker-header">
+        <div class="broker-name">${broker}</div>
+        <div><span class="broker-sum">${fmt(brokerSum)}</span>
+          <button class="btn-del" onclick="removeBroker('${broker.replace(/'/g,"\\'")}')">Remove</button>
+        </div>
+      </div>
+      ${indices.length ? `<div class="headers stock-row row"><div>Symbol</div><div>Shares</div><div>Buy Price</div><div>Current</div><div>Value</div><div>P/L</div><div></div></div>` : ""}
+      ${rowsHtml}
+      <button class="btn-add" onclick="addStock('${broker.replace(/'/g,"\\'")}')">+ Add Stock</button>
     `;
-    stocksEl.appendChild(row);
+    stocksEl.appendChild(group);
   });
+
+  // Populate broker selector with brokers not yet added
+  const sel = document.getElementById("new-broker");
+  const available = BROKERS.filter(b => !data.brokers.includes(b));
+  sel.innerHTML = available.length
+    ? available.map(b=>`<option>${b}</option>`).join("")
+    : `<option disabled>All brokers added</option>`;
 
   // Simple lists
   const simpleRender = (key, placeholder) => {
@@ -186,8 +265,8 @@ function render() {
       const row = document.createElement("div");
       row.className = "row simple-row";
       row.innerHTML = `
-        <input placeholder="${placeholder}" value="${item.name}" oninput="update('${key}',${i},'name',this.value)"/>
-        <input type="number" step="0.01" value="${item.value}" oninput="update('${key}',${i},'value',this.value)"/>
+        <input placeholder="${placeholder}" value="${item.name}" onchange="update('${key}',${i},'name',this.value)"/>
+        <input type="number" step="0.01" value="${item.value}" onchange="update('${key}',${i},'value',this.value)"/>
         <button class="btn-del" onclick="del('${key}',${i})">×</button>
       `;
       el.appendChild(row);
@@ -200,13 +279,30 @@ function render() {
   const otherTotal = simpleRender("other", "e.g. Crypto, Real Estate");
   const liabTotal  = simpleRender("liab", "e.g. Mortgage, Credit Card");
 
+  // CPF — fixed Ordinary / Special / Medisave
+  const cpfEl = document.getElementById("cpf");
+  cpfEl.innerHTML = "";
+  const cpfAccounts = [["oa","Ordinary"],["sa","Special"],["ma","Medisave"]];
+  cpfAccounts.forEach(([k,label]) => {
+    const row = document.createElement("div");
+    row.className = "row simple-row";
+    row.innerHTML = `
+      <div style="align-self:center; font-weight:500;">${label}</div>
+      <input type="number" step="0.01" value="${data.cpf[k]||0}" onchange="updateCpf('${k}',this.value)"/>
+      <div></div>
+    `;
+    cpfEl.appendChild(row);
+  });
+  const cpfTotal = (data.cpf.oa||0)+(data.cpf.sa||0)+(data.cpf.ma||0);
+  document.getElementById("sum-cpf").textContent = fmt(cpfTotal);
+
   document.getElementById("sum-stocks").textContent = fmt(stocksTotal);
   document.getElementById("sum-bonds").textContent  = fmt(bondsTotal);
   document.getElementById("sum-cash").textContent   = fmt(cashTotal);
   document.getElementById("sum-other").textContent  = fmt(otherTotal);
   document.getElementById("sum-liab").textContent   = "-" + fmt(liabTotal);
 
-  const assets = stocksTotal + bondsTotal + cashTotal + otherTotal;
+  const assets = stocksTotal + bondsTotal + cashTotal + otherTotal + cpfTotal;
   const net = assets - liabTotal;
   document.getElementById("total").textContent = fmt(net);
 
@@ -214,6 +310,7 @@ function render() {
     <div>Stocks: <b>${fmt(stocksTotal)}</b></div>
     <div>Bonds: <b>${fmt(bondsTotal)}</b></div>
     <div>Cash: <b>${fmt(cashTotal)}</b></div>
+    <div>CPF: <b>${fmt(cpfTotal)}</b></div>
     <div>Other: <b>${fmt(otherTotal)}</b></div>
     <div>Liabilities: <b>-${fmt(liabTotal)}</b></div>
   `;
@@ -230,7 +327,7 @@ function exportData() {
 
 function clearAll() {
   if (confirm("Clear all data?")) {
-    data = { stocks:[], bonds:[], cash:[], other:[], liab:[] };
+    data = { brokers:[], stocks:[], bonds:[], cash:[], other:[], cpf:{oa:0,sa:0,ma:0}, liab:[] };
     save();
   }
 }
