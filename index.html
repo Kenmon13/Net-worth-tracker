@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Net Worth Tracker</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    margin: 0;
+    padding: 24px;
+  }
+  h1 { margin: 0 0 8px; }
+  .subtitle { color: #94a3b8; margin-bottom: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  .summary {
+    background: linear-gradient(135deg, #1e40af, #7c3aed);
+    padding: 24px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+  }
+  .summary .label { color: #cbd5e1; font-size: 14px; }
+  .summary .total { font-size: 42px; font-weight: 700; margin-top: 4px; }
+  .breakdown { display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+  .breakdown div { background: rgba(0,0,0,0.25); padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+  .sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .card {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid #334155;
+  }
+  .card h2 { margin: 0 0 12px; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+  .card h2 .sum { color: #22c55e; font-size: 16px; font-weight: 600; }
+  .row { display: grid; gap: 8px; margin-bottom: 10px; }
+  .stock-row { grid-template-columns: 1.2fr 1.4fr 0.8fr 1fr 1fr auto; }
+  .simple-row { grid-template-columns: 2fr 1fr auto; }
+  input, select {
+    background: #0f172a;
+    border: 1px solid #475569;
+    color: #e2e8f0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 100%;
+  }
+  input:focus, select:focus { outline: none; border-color: #6366f1; }
+  button {
+    background: #6366f1;
+    color: white;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { background: #4f46e5; }
+  .btn-del {
+    background: #7f1d1d;
+    padding: 6px 10px;
+  }
+  .btn-del:hover { background: #991b1b; }
+  .btn-add { margin-top: 6px; background: #334155; }
+  .btn-add:hover { background: #475569; }
+  .headers { font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; }
+  .item-value { color: #22c55e; font-size: 13px; text-align: right; margin-top: 4px; }
+  .actions { margin-top: 16px; display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Net Worth Tracker</h1>
+  <div class="subtitle">Track stocks across brokers, bonds, cash, and other assets</div>
+
+  <div class="summary">
+    <div class="label">Total Net Worth</div>
+    <div class="total" id="total">$0.00</div>
+    <div class="breakdown" id="breakdown"></div>
+  </div>
+
+  <div class="sections">
+    <div class="card">
+      <h2>Stocks <span class="sum" id="sum-stocks">$0.00</span></h2>
+      <div class="headers stock-row row" style="margin-bottom:4px;">
+        <div>Broker</div><div>Symbol</div><div>Shares</div><div>Price</div><div>Value</div><div></div>
+      </div>
+      <div id="stocks"></div>
+      <button class="btn-add" onclick="addStock()">+ Add Stock</button>
+    </div>
+
+    <div class="card">
+      <h2>Bonds <span class="sum" id="sum-bonds">$0.00</span></h2>
+      <div id="bonds"></div>
+      <button class="btn-add" onclick="addBond()">+ Add Bond</button>
+    </div>
+
+    <div class="card">
+      <h2>Cash <span class="sum" id="sum-cash">$0.00</span></h2>
+      <div id="cash"></div>
+      <button class="btn-add" onclick="addCash()">+ Add Cash Account</button>
+    </div>
+
+    <div class="card">
+      <h2>Other Assets <span class="sum" id="sum-other">$0.00</span></h2>
+      <div id="other"></div>
+      <button class="btn-add" onclick="addOther()">+ Add Asset</button>
+    </div>
+
+    <div class="card">
+      <h2>Liabilities <span class="sum" id="sum-liab" style="color:#ef4444;">$0.00</span></h2>
+      <div id="liab"></div>
+      <button class="btn-add" onclick="addLiab()">+ Add Liability</button>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button onclick="exportData()">Export JSON</button>
+    <button onclick="clearAll()" style="background:#7f1d1d;">Clear All</button>
+  </div>
+</div>
+
+<script>
+const BROKERS = ["Fidelity","Schwab","Vanguard","Robinhood","E*TRADE","Interactive Brokers","TD Ameritrade","Merrill","Webull","Other"];
+const STORAGE = "networth_v1";
+
+let data = load() || {
+  stocks: [], bonds: [], cash: [], other: [], liab: []
+};
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORAGE)); } catch { return null; }
+}
+function save() {
+  localStorage.setItem(STORAGE, JSON.stringify(data));
+  render();
+}
+function fmt(n) {
+  return "$" + (Number(n)||0).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function addStock() { data.stocks.push({broker:"Fidelity", symbol:"", shares:0, price:0}); save(); }
+function addBond()  { data.bonds.push({name:"", value:0}); save(); }
+function addCash()  { data.cash.push({name:"", value:0}); save(); }
+function addOther() { data.other.push({name:"", value:0}); save(); }
+function addLiab()  { data.liab.push({name:"", value:0}); save(); }
+
+function del(list, i) { data[list].splice(i,1); save(); }
+function update(list, i, key, val) {
+  data[list][i][key] = (key==="shares"||key==="price"||key==="value") ? parseFloat(val)||0 : val;
+  localStorage.setItem(STORAGE, JSON.stringify(data));
+  render();
+}
+
+function render() {
+  // Stocks
+  const stocksEl = document.getElementById("stocks");
+  stocksEl.innerHTML = "";
+  let stocksTotal = 0;
+  data.stocks.forEach((s, i) => {
+    const value = (s.shares||0) * (s.price||0);
+    stocksTotal += value;
+    const row = document.createElement("div");
+    row.className = "row stock-row";
+    row.innerHTML = `
+      <select onchange="update('stocks',${i},'broker',this.value)">
+        ${BROKERS.map(b=>`<option ${b===s.broker?"selected":""}>${b}</option>`).join("")}
+      </select>
+      <input placeholder="AAPL" value="${s.symbol}" oninput="update('stocks',${i},'symbol',this.value)"/>
+      <input type="number" step="0.0001" value="${s.shares}" oninput="update('stocks',${i},'shares',this.value)"/>
+      <input type="number" step="0.01" value="${s.price}" oninput="update('stocks',${i},'price',this.value)"/>
+      <div style="align-self:center; color:#22c55e; font-weight:600;">${fmt(value)}</div>
+      <button class="btn-del" onclick="del('stocks',${i})">×</button>
+    `;
+    stocksEl.appendChild(row);
+  });
+
+  // Simple lists
+  const simpleRender = (key, placeholder) => {
+    const el = document.getElementById(key);
+    el.innerHTML = "";
+    let total = 0;
+    data[key].forEach((item, i) => {
+      total += Number(item.value)||0;
+      const row = document.createElement("div");
+      row.className = "row simple-row";
+      row.innerHTML = `
+        <input placeholder="${placeholder}" value="${item.name}" oninput="update('${key}',${i},'name',this.value)"/>
+        <input type="number" step="0.01" value="${item.value}" oninput="update('${key}',${i},'value',this.value)"/>
+        <button class="btn-del" onclick="del('${key}',${i})">×</button>
+      `;
+      el.appendChild(row);
+    });
+    return total;
+  };
+
+  const bondsTotal = simpleRender("bonds", "e.g. 10yr Treasury");
+  const cashTotal  = simpleRender("cash", "e.g. Chase Checking");
+  const otherTotal = simpleRender("other", "e.g. Crypto, Real Estate");
+  const liabTotal  = simpleRender("liab", "e.g. Mortgage, Credit Card");
+
+  document.getElementById("sum-stocks").textContent = fmt(stocksTotal);
+  document.getElementById("sum-bonds").textContent  = fmt(bondsTotal);
+  document.getElementById("sum-cash").textContent   = fmt(cashTotal);
+  document.getElementById("sum-other").textContent  = fmt(otherTotal);
+  document.getElementById("sum-liab").textContent   = "-" + fmt(liabTotal);
+
+  const assets = stocksTotal + bondsTotal + cashTotal + otherTotal;
+  const net = assets - liabTotal;
+  document.getElementById("total").textContent = fmt(net);
+
+  document.getElementById("breakdown").innerHTML = `
+    <div>Stocks: <b>${fmt(stocksTotal)}</b></div>
+    <div>Bonds: <b>${fmt(bondsTotal)}</b></div>
+    <div>Cash: <b>${fmt(cashTotal)}</b></div>
+    <div>Other: <b>${fmt(otherTotal)}</b></div>
+    <div>Liabilities: <b>-${fmt(liabTotal)}</b></div>
+  `;
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "networth-" + new Date().toISOString().slice(0,10) + ".json";
+  a.click();
+}
+
+function clearAll() {
+  if (confirm("Clear all data?")) {
+    data = { stocks:[], bonds:[], cash:[], other:[], liab:[] };
+    save();
+  }
+}
+
+render();
+</script>
+</body>
+</html>
