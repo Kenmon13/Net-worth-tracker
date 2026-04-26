@@ -1,0 +1,1 @@
+- [Always use bun](feedback_use_bun.md) — Use bun for all JS/TS ops, never npm/yarn/pnpm
