@@ -13,6 +13,17 @@
     padding: 24px;
   }
   h1 { margin: 0 0 8px; }
+  nav { margin-bottom: 24px; display: flex; gap: 12px; }
+  nav a {
+    color: #a5b4fc;
+    text-decoration: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    font-size: 14px;
+  }
+  nav a:hover { background: #1e293b; }
+  nav a.active { background: #6366f1; color: white; border-color: #6366f1; }
   .subtitle { color: #94a3b8; margin-bottom: 24px; }
   .container { max-width: 1100px; margin: 0 auto; }
   .summary {
@@ -91,6 +102,11 @@
 </head>
 <body>
 <div class="container">
+  <nav>
+    <a href="index.html" class="active">Tracker</a>
+    <a href="history.html">History</a>
+  </nav>
+
   <h1>Net Worth Tracker</h1>
   <div class="subtitle">Track stocks across brokers, bonds, cash, and other assets</div>
 

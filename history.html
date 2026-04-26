@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Net Worth History</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    margin: 0;
+    padding: 24px;
+  }
+  h1 { margin: 0 0 8px; }
+  .subtitle { color: #94a3b8; margin-bottom: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  nav { margin-bottom: 24px; display: flex; gap: 12px; }
+  nav a {
+    color: #a5b4fc;
+    text-decoration: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    font-size: 14px;
+  }
+  nav a:hover { background: #1e293b; }
+  nav a.active { background: #6366f1; color: white; border-color: #6366f1; }
+
+  .snapshot-form {
+    background: linear-gradient(135deg, #1e40af, #7c3aed);
+    padding: 24px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .snapshot-form .field { display: flex; flex-direction: column; gap: 4px; }
+  .snapshot-form label { font-size: 12px; color: #cbd5e1; text-transform: uppercase; }
+  .snapshot-form input {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #e2e8f0;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 16px;
+  }
+  .snapshot-form input:focus { outline: none; border-color: #a5b4fc; }
+  .snapshot-form .current-worth {
+    font-size: 28px;
+    font-weight: 700;
+    padding: 0 16px;
+    align-self: center;
+  }
+
+  button {
+    background: #6366f1;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  button:hover { background: #4f46e5; }
+
+  .card {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid #334155;
+    margin-bottom: 20px;
+  }
+  .card h2 { margin: 0 0 16px; font-size: 18px; }
+
+  .chart-container {
+    width: 100%;
+    height: 300px;
+    position: relative;
+  }
+  canvas { width: 100%; height: 100%; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid #334155;
+    color: #94a3b8;
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1e293b;
+  }
+  tr:hover td { background: #0f172a; }
+  .change-pos { color: #22c55e; }
+  .change-neg { color: #ef4444; }
+  .btn-del {
+    background: #7f1d1d;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  .btn-del:hover { background: #991b1b; }
+  .empty-state {
+    color: #94a3b8;
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .stat-card .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; }
+  .stat-card .value { font-size: 24px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav>
+    <a href="index.html">Tracker</a>
+    <a href="history.html" class="active">History</a>
+  </nav>
+
+  <h1>Net Worth History</h1>
+  <div class="subtitle">Track your net worth over time</div>
+
+  <div class="snapshot-form">
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="snapshot-date" />
+    </div>
+    <div class="field">
+      <label>Net Worth</label>
+      <input type="number" step="0.01" id="snapshot-value" placeholder="0.00" />
+    </div>
+    <button onclick="saveSnapshot()">Save Snapshot</button>
+    <button onclick="autofillFromTracker()" style="background:#334155;">Auto-fill from Tracker</button>
+  </div>
+
+  <div class="stats-row" id="stats-row"></div>
+
+  <div class="card">
+    <h2>Net Worth Over Time</h2>
+    <div class="chart-container">
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Snapshot History</h2>
+    <div id="history-table"></div>
+  </div>
+</div>
+
+<script>
+const HISTORY_STORAGE = "networth_history_v1";
+const TRACKER_STORAGE = "networth_v1";
+
+let history = loadHistory();
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_STORAGE)) || []; } catch { return []; }
+}
+
+function saveHistory() {
+  localStorage.setItem(HISTORY_STORAGE, JSON.stringify(history));
+  render();
+}
+
+function fmt(n) {
+  return "$" + (Number(n)||0).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function getTrackerNetWorth() {
+  try {
+    const data = JSON.parse(localStorage.getItem(TRACKER_STORAGE));
+    if (!data) return null;
+
+    let stocksTotal = 0;
+    (data.stocks || []).forEach(s => stocksTotal += (s.shares||0) * (s.price||0));
+
+    const sumList = (list) => (list || []).reduce((t, item) => t + (Number(item.value)||0), 0);
+
+    const bondsTotal = sumList(data.bonds);
+    const cashTotal = sumList(data.cash);
+    const otherTotal = sumList(data.other);
+    const liabTotal = sumList(data.liab);
+
+    const cpf = data.cpf || {oa:0, sa:0, ma:0};
+    const cpfTotal = (cpf.oa||0) + (cpf.sa||0) + (cpf.ma||0);
+
+    return stocksTotal + bondsTotal + cashTotal + otherTotal + cpfTotal - liabTotal;
+  } catch { return null; }
+}
+
+function autofillFromTracker() {
+  const net = getTrackerNetWorth();
+  if (net === null) {
+    alert("No data found in the tracker. Add some assets first.");
+    return;
+  }
+  document.getElementById("snapshot-value").value = net.toFixed(2);
+}
+
+function saveSnapshot() {
+  const dateInput = document.getElementById("snapshot-date");
+  const valueInput = document.getElementById("snapshot-value");
+
+  const date = dateInput.value;
+  const value = parseFloat(valueInput.value);
+
+  if (!date) { alert("Please select a date."); return; }
+  if (isNaN(value)) { alert("Please enter a net worth value."); return; }
+
+  // Check for duplicate date
+  const existing = history.findIndex(h => h.date === date);
+  if (existing >= 0) {
+    if (!confirm(`A snapshot for ${date} already exists (${fmt(history[existing].value)}). Replace it?`)) return;
+    history[existing].value = value;
+  } else {
+    history.push({ date, value });
+  }
+
+  // Sort by date
+  history.sort((a, b) => a.date.localeCompare(b.date));
+  saveHistory();
+
+  // Reset form
+  valueInput.value = "";
+}
+
+function deleteSnapshot(index) {
+  if (!confirm(`Delete snapshot for ${history[index].date}?`)) return;
+  history.splice(index, 1);
+  saveHistory();
+}
+
+function render() {
+  renderStats();
+  renderChart();
+  renderTable();
+}
+
+function renderStats() {
+  const el = document.getElementById("stats-row");
+  if (history.length === 0) { el.innerHTML = ""; return; }
+
+  const latest = history[history.length - 1];
+  const first = history[0];
+  const allTimeChange = latest.value - first.value;
+  const allTimePct = first.value !== 0 ? (allTimeChange / Math.abs(first.value)) * 100 : 0;
+
+  let monthlyChange = null;
+  let monthlyPct = null;
+  if (history.length >= 2) {
+    const prev = history[history.length - 2];
+    monthlyChange = latest.value - prev.value;
+    monthlyPct = prev.value !== 0 ? (monthlyChange / Math.abs(prev.value)) * 100 : 0;
+  }
+
+  const changeCls = (v) => v >= 0 ? "change-pos" : "change-neg";
+  const changeSign = (v) => v >= 0 ? "+" : "";
+
+  el.innerHTML = `
+    <div class="stat-card">
+      <div class="label">Latest Net Worth</div>
+      <div class="value">${fmt(latest.value)}</div>
+      <div style="font-size:12px; color:#94a3b8; margin-top:4px;">${latest.date}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">All-Time Change</div>
+      <div class="value ${changeCls(allTimeChange)}">${changeSign(allTimeChange)}${fmt(Math.abs(allTimeChange))}</div>
+      <div style="font-size:12px; margin-top:4px;" class="${changeCls(allTimeChange)}">${changeSign(allTimeChange)}${Math.abs(allTimePct).toFixed(2)}% since ${first.date}</div>
+    </div>
+    ${monthlyChange !== null ? `
+    <div class="stat-card">
+      <div class="label">Last Change</div>
+      <div class="value ${changeCls(monthlyChange)}">${changeSign(monthlyChange)}${fmt(Math.abs(monthlyChange))}</div>
+      <div style="font-size:12px; margin-top:4px;" class="${changeCls(monthlyChange)}">${changeSign(monthlyChange)}${Math.abs(monthlyPct).toFixed(2)}%</div>
+    </div>` : ""}
+    <div class="stat-card">
+      <div class="label">Snapshots</div>
+      <div class="value">${history.length}</div>
+      <div style="font-size:12px; color:#94a3b8; margin-top:4px;">${first.date} — ${latest.date}</div>
+    </div>
+  `;
+}
+
+function renderChart() {
+  const canvas = document.getElementById("chart");
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + "px";
+  canvas.style.height = rect.height + "px";
+  ctx.scale(dpr, dpr);
+
+  const W = rect.width;
+  const H = rect.height;
+  const pad = { top: 20, right: 20, bottom: 50, left: 80 };
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (history.length === 0) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "14px -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No snapshots yet. Save your first snapshot above.", W/2, H/2);
+    return;
+  }
+
+  const values = history.map(h => h.value);
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  const range = maxVal - minVal || 1;
+  const yPad = range * 0.1;
+
+  const chartW = W - pad.left - pad.right;
+  const chartH = H - pad.top - pad.bottom;
+
+  const xStep = history.length > 1 ? chartW / (history.length - 1) : 0;
+
+  const toX = (i) => pad.left + i * xStep;
+  const toY = (v) => pad.top + chartH - ((v - (minVal - yPad)) / (range + 2 * yPad)) * chartH;
+
+  // Grid lines
+  ctx.strokeStyle = "#334155";
+  ctx.lineWidth = 0.5;
+  const gridLines = 5;
+  for (let i = 0; i <= gridLines; i++) {
+    const v = (minVal - yPad) + (range + 2 * yPad) * (i / gridLines);
+    const y = toY(v);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(W - pad.right, y);
+    ctx.stroke();
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "11px -apple-system, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(fmt(v), pad.left - 8, y + 4);
+  }
+
+  // Area fill
+  if (history.length > 1) {
+    const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH);
+    gradient.addColorStop(0, "rgba(99, 102, 241, 0.3)");
+    gradient.addColorStop(1, "rgba(99, 102, 241, 0.02)");
+
+    ctx.beginPath();
+    ctx.moveTo(toX(0), pad.top + chartH);
+    history.forEach((h, i) => ctx.lineTo(toX(i), toY(h.value)));
+    ctx.lineTo(toX(history.length - 1), pad.top + chartH);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  }
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = "#6366f1";
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = "round";
+  history.forEach((h, i) => {
+    if (i === 0) ctx.moveTo(toX(i), toY(h.value));
+    else ctx.lineTo(toX(i), toY(h.value));
+  });
+  ctx.stroke();
+
+  // Points
+  history.forEach((h, i) => {
+    ctx.beginPath();
+    ctx.arc(toX(i), toY(h.value), 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#6366f1";
+    ctx.fill();
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // X labels
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "11px -apple-system, sans-serif";
+  ctx.textAlign = "center";
+
+  const maxLabels = Math.floor(chartW / 80);
+  const step = Math.max(1, Math.ceil(history.length / maxLabels));
+
+  history.forEach((h, i) => {
+    if (i % step === 0 || i === history.length - 1) {
+      const parts = h.date.split("-");
+      const label = `${parts[1]}/${parts[2]}`;
+      ctx.save();
+      ctx.translate(toX(i), H - pad.bottom + 16);
+      ctx.rotate(-0.4);
+      ctx.fillText(label, 0, 0);
+      ctx.restore();
+
+      // Year below if first or year changed
+      if (i === 0 || history[i].date.slice(0,4) !== history[i-1]?.date.slice(0,4)) {
+        ctx.save();
+        ctx.translate(toX(i), H - pad.bottom + 32);
+        ctx.rotate(-0.4);
+        ctx.fillText(parts[0], 0, 0);
+        ctx.restore();
+      }
+    }
+  });
+}
+
+function renderTable() {
+  const el = document.getElementById("history-table");
+
+  if (history.length === 0) {
+    el.innerHTML = `<div class="empty-state">No snapshots yet. Use the form above to save your first net worth snapshot.</div>`;
+    return;
+  }
+
+  // Show newest first in table
+  const reversed = [...history].reverse();
+
+  let html = `<table>
+    <thead><tr><th>Date</th><th>Net Worth</th><th>Change</th><th>% Change</th><th></th></tr></thead>
+    <tbody>`;
+
+  reversed.forEach((h, ri) => {
+    const origIdx = history.length - 1 - ri;
+    const prev = origIdx > 0 ? history[origIdx - 1] : null;
+    let changeHtml = "—";
+    let pctHtml = "—";
+
+    if (prev) {
+      const change = h.value - prev.value;
+      const pct = prev.value !== 0 ? (change / Math.abs(prev.value)) * 100 : 0;
+      const cls = change >= 0 ? "change-pos" : "change-neg";
+      const sign = change >= 0 ? "+" : "";
+      changeHtml = `<span class="${cls}">${sign}${fmt(Math.abs(change))}</span>`;
+      pctHtml = `<span class="${cls}">${sign}${Math.abs(pct).toFixed(2)}%</span>`;
+    }
+
+    html += `<tr>
+      <td>${h.date}</td>
+      <td><b>${fmt(h.value)}</b></td>
+      <td>${changeHtml}</td>
+      <td>${pctHtml}</td>
+      <td><button class="btn-del" onclick="deleteSnapshot(${origIdx})">Delete</button></td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  el.innerHTML = html;
+}
+
+// Set default date to today
+document.getElementById("snapshot-date").value = new Date().toISOString().slice(0, 10);
+
+// Auto-fill if tracker has data
+const autoNet = getTrackerNetWorth();
+if (autoNet !== null && autoNet !== 0) {
+  document.getElementById("snapshot-value").value = autoNet.toFixed(2);
+}
+
+window.addEventListener("resize", () => renderChart());
+render();
+</script>
+</body>
+</html>
