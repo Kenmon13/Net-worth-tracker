@@ -59,7 +59,9 @@ export default function TrackerPage() {
     setRefreshing(true);
     try {
       await api.refreshStockPrices();
-      await refresh();
+      const [data, rates] = await Promise.all([api.getPortfolio(), api.getForexRates()]);
+      setPortfolio(data);
+      setForexRates(rates);
     } finally {
       setRefreshing(false);
     }
