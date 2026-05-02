@@ -129,6 +129,41 @@ def delete_stock(stock_id: int):
     db.close()
 
 
+@app.post("/api/stocks/refresh-prices", response_model=list[StockOut])
+def refresh_stock_prices():
+    """Fetch latest prices from Yahoo Finance for all stocks with a symbol."""
+    import yfinance as yf
+
+    db = get_db()
+    stocks = [dict(r) for r in db.execute("SELECT * FROM stocks WHERE symbol != ''").fetchall()]
+    if not stocks:
+        db.close()
+        return []
+
+    symbols = list({s["symbol"] for s in stocks})
+    tickers = yf.Tickers(" ".join(symbols))
+
+    price_map: dict[str, float] = {}
+    for sym in symbols:
+        try:
+            info = tickers.tickers[sym].info
+            price = info.get("regularMarketPrice") or info.get("currentPrice")
+            if price is not None:
+                price_map[sym] = float(price)
+        except Exception:
+            pass
+
+    for stock in stocks:
+        sym = stock["symbol"]
+        if sym in price_map:
+            db.execute("UPDATE stocks SET price=? WHERE id=?", (price_map[sym], stock["id"]))
+
+    db.commit()
+    updated = [dict(r) for r in db.execute("SELECT * FROM stocks ORDER BY id").fetchall()]
+    db.close()
+    return updated
+
+
 # ── Generic simple-item CRUD factory ─────────────────────────────────────────
 
 

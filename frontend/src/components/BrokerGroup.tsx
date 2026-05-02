@@ -29,7 +29,7 @@ export default function BrokerGroup({ broker, stocks, onRefresh }: Props) {
     const key = `${stock.id}-${field}`;
     clearTimeout(debounceTimers.current[key]);
     debounceTimers.current[key] = setTimeout(async () => {
-      const numericFields = ['shares', 'price', 'cost'];
+      const numericFields = ['shares', 'cost'];
       const parsed = numericFields.includes(field) ? parseFloat(value) || 0 : value;
       await api.updateStock(stock.id, { [field]: parsed });
       onRefresh();
@@ -99,13 +99,7 @@ export default function BrokerGroup({ broker, stocks, onRefresh }: Props) {
               defaultValue={s.cost}
               onChange={(e) => handleStockChange(s, 'cost', e.target.value)}
             />
-            <input
-              type="number"
-              step="0.01"
-              className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
-              defaultValue={s.price}
-              onChange={(e) => handleStockChange(s, 'price', e.target.value)}
-            />
+            <div className="self-center text-slate-200 text-sm px-2.5">{s.price ? fmt(s.price) : '—'}</div>
             <div className="self-center text-green-500 font-semibold text-sm text-right">{fmt(value)}</div>
             <div className={`self-center font-semibold text-sm ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
               {plText}

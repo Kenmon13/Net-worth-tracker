@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Portfolio } from '../types';
 import * as api from '../api';
 import Summary from '../components/Summary';
@@ -14,7 +14,10 @@ const BROKERS_LIST = [
 
 export default function TrackerPage() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [selectedBroker, setSelectedBroker] = useState('');
+  const [brokerInput, setBrokerInput] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     const data = await api.getPortfolio();
@@ -34,14 +37,27 @@ export default function TrackerPage() {
 
   const existingBrokerNames = portfolio.brokers.map((b) => b.name);
   const availableBrokers = BROKERS_LIST.filter((b) => !existingBrokerNames.includes(b));
+  const filteredSuggestions = availableBrokers.filter((b) =>
+    b.toLowerCase().includes(brokerInput.toLowerCase())
+  );
 
-  const activeBroker = selectedBroker || availableBrokers[0] || '';
-
-  async function handleAddBroker() {
-    if (!activeBroker) return;
-    await api.createBroker(activeBroker);
-    setSelectedBroker('');
+  async function handleAddBroker(name?: string) {
+    const brokerName = (name || brokerInput).trim();
+    if (!brokerName) return;
+    await api.createBroker(brokerName);
+    setBrokerInput('');
+    setShowSuggestions(false);
     refresh();
+  }
+
+  async function handleRefreshPrices() {
+    setRefreshing(true);
+    try {
+      await api.refreshStockPrices();
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   async function handleExport() {
@@ -73,9 +89,18 @@ export default function TrackerPage() {
       <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-5" style={{ gridColumn: '1 / -1' }}>
         <h2 className="text-lg font-semibold mb-3 flex justify-between items-center">
           Stocks
-          <span className="text-base font-semibold text-green-500">
-            ${stocksTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefreshPrices}
+              disabled={refreshing}
+              className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-3 py-1.5 rounded-md text-sm font-semibold"
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh Prices'}
+            </button>
+            <span className="text-base font-semibold text-green-500">
+              ${stocksTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
         </h2>
 
         {portfolio.brokers.length === 0 && (
@@ -91,20 +116,45 @@ export default function TrackerPage() {
           />
         ))}
 
-        <div className="flex gap-2 mt-2.5 items-center">
-          <select
-            className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm max-w-[220px] focus:outline-none focus:border-indigo-500"
-            value={activeBroker}
-            onChange={(e) => setSelectedBroker(e.target.value)}
-          >
-            {availableBrokers.length > 0
-              ? availableBrokers.map((b) => <option key={b} value={b}>{b}</option>)
-              : <option disabled>All brokers added</option>
-            }
-          </select>
+        <div className="flex gap-2 mt-2.5 items-center relative">
+          <div className="relative">
+            <input
+              className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-[220px] focus:outline-none focus:border-indigo-500"
+              placeholder="Type broker name..."
+              value={brokerInput}
+              onChange={(e) => {
+                setBrokerInput(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAddBroker();
+              }}
+            />
+            {showSuggestions && brokerInput && filteredSuggestions.length > 0 && (
+              <div
+                ref={suggestionsRef}
+                className="absolute z-10 top-full left-0 mt-1 w-[220px] bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg"
+              >
+                {filteredSuggestions.map((b) => (
+                  <button
+                    key={b}
+                    className="w-full text-left px-2.5 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleAddBroker(b);
+                    }}
+                  >
+                    {b}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
-            onClick={handleAddBroker}
-            disabled={availableBrokers.length === 0}
+            onClick={() => handleAddBroker()}
+            disabled={!brokerInput.trim()}
             className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white px-3.5 py-2 rounded-md text-sm"
           >
             + Add Broker

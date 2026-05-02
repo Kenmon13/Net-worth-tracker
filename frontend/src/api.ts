@@ -39,6 +39,9 @@ export const updateStock = (id: number, data: Partial<Stock>) =>
 export const deleteStock = (id: number) =>
   fetch(`${BASE}/stocks/${id}`, { method: 'DELETE' });
 
+export const refreshStockPrices = () =>
+  fetch(`${BASE}/stocks/refresh-prices`, { method: 'POST' }).then(r => json<Stock[]>(r));
+
 // Simple items (bonds, cash, other, liabilities)
 export const createSimpleItem = (category: string, name = '', value = 0) =>
   fetch(`${BASE}/${category}`, {
