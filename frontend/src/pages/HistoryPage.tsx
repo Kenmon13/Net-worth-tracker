@@ -234,6 +234,8 @@ export default function HistoryPage() {
                 />
                 <Tooltip
                   contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }}
+                  itemStyle={{ color: '#e2e8f0' }}
+                  labelStyle={{ color: '#94a3b8' }}
                   formatter={(value: number) => ['$' + Math.round(Math.abs(value)).toLocaleString('en-US'), 'Amount']}
                 />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
