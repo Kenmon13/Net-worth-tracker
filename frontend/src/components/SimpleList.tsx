@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import type { SimpleItem } from '../types';
 import * as api from '../api';
+import NumberInput from './NumberInput';
 
 interface Props {
   title: string;
@@ -52,12 +53,9 @@ export default function SimpleList({ title, category, items, placeholder, sumCol
             defaultValue={item.name}
             onChange={(e) => handleChange(item, 'name', e.target.value)}
           />
-          <input
-            type="number"
-            step="0.01"
-            className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
+          <NumberInput
             defaultValue={item.value}
-            onChange={(e) => handleChange(item, 'value', e.target.value)}
+            onChange={(v) => handleChange(item, 'value', v)}
           />
           <button
             onClick={() => handleDelete(item.id)}

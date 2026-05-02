@@ -1,4 +1,4 @@
-import type { Broker, CPF, Portfolio, SimpleItem, Snapshot, Stock } from './types';
+import type { Broker, BrokerCash, CPF, ForexRates, Portfolio, SimpleItem, Snapshot, Stock } from './types';
 
 const BASE = '/api';
 
@@ -18,15 +18,40 @@ export const createBroker = (name: string) =>
     body: JSON.stringify({ name }),
   }).then(r => json<Broker>(r));
 
+export const updateBroker = (id: number, data: Partial<Broker>) =>
+  fetch(`${BASE}/brokers/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(r => json<Broker>(r));
+
 export const deleteBroker = (id: number) =>
   fetch(`${BASE}/brokers/${id}`, { method: 'DELETE' });
 
+// Broker Cash
+export const createBrokerCash = (broker_id: number, currency: string) =>
+  fetch(`${BASE}/broker-cash`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ broker_id, currency }),
+  }).then(r => json<BrokerCash>(r));
+
+export const updateBrokerCash = (id: number, amount: number) =>
+  fetch(`${BASE}/broker-cash/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  }).then(r => json<BrokerCash>(r));
+
+export const deleteBrokerCash = (id: number) =>
+  fetch(`${BASE}/broker-cash/${id}`, { method: 'DELETE' });
+
 // Stocks
-export const createStock = (broker_id: number) =>
+export const createStock = (broker_id: number, defaults?: Partial<Stock>) =>
   fetch(`${BASE}/stocks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ broker_id }),
+    body: JSON.stringify({ broker_id, ...defaults }),
   }).then(r => json<Stock>(r));
 
 export const updateStock = (id: number, data: Partial<Stock>) =>
@@ -41,6 +66,19 @@ export const deleteStock = (id: number) =>
 
 export const refreshStockPrices = () =>
   fetch(`${BASE}/stocks/refresh-prices`, { method: 'POST' }).then(r => json<Stock[]>(r));
+
+export const getForexRates = () =>
+  fetch(`${BASE}/forex`).then(r => json<ForexRates>(r));
+
+export interface SymbolResult {
+  symbol: string;
+  name: string;
+  type: string;
+  exchange: string;
+}
+
+export const searchSymbols = (q: string) =>
+  fetch(`${BASE}/stocks/search?q=${encodeURIComponent(q)}`).then(r => json<SymbolResult[]>(r));
 
 // Simple items (bonds, cash, other, liabilities)
 export const createSimpleItem = (category: string, name = '', value = 0) =>
@@ -80,6 +118,9 @@ export const createSnapshot = (data: Omit<Snapshot, 'id' | 'total'>) =>
 
 export const deleteSnapshot = (id: number) =>
   fetch(`${BASE}/snapshots/${id}`, { method: 'DELETE' });
+
+export const deleteAllSnapshots = () =>
+  fetch(`${BASE}/snapshots`, { method: 'DELETE' });
 
 // Export
 export const exportData = () => fetch(`${BASE}/export`).then(r => r.json());

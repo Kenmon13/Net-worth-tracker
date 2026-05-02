@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import type { CPF } from '../types';
 import { fmt } from '../utils';
 import * as api from '../api';
+import NumberInput from './NumberInput';
 
 interface Props {
   cpf: CPF;
@@ -36,12 +37,9 @@ export default function CPFSection({ cpf, onRefresh }: Props) {
       {ACCOUNTS.map(({ key, label }) => (
         <div key={key} className="grid grid-cols-[2fr_1fr_auto] gap-2 mb-2.5">
           <div className="self-center font-medium">{label}</div>
-          <input
-            type="number"
-            step="0.01"
-            className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
+          <NumberInput
             defaultValue={cpf[key]}
-            onChange={(e) => handleChange(key, e.target.value)}
+            onChange={(v) => handleChange(key, v)}
           />
           <div></div>
         </div>

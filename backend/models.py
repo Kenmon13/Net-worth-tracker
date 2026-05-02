@@ -5,10 +5,35 @@ class BrokerCreate(BaseModel):
     name: str
 
 
+class BrokerUpdate(BaseModel):
+    cash: float | None = None
+    cash_usd: float | None = None
+    cash_hkd: float | None = None
+
+
 class BrokerOut(BaseModel):
     id: int
     name: str
     position: int
+    cash: float
+    cash_usd: float
+    cash_hkd: float
+
+
+class BrokerCashCreate(BaseModel):
+    broker_id: int
+    currency: str = "SGD"
+
+
+class BrokerCashUpdate(BaseModel):
+    amount: float | None = None
+
+
+class BrokerCashOut(BaseModel):
+    id: int
+    broker_id: int
+    currency: str
+    amount: float
 
 
 class StockCreate(BaseModel):
@@ -17,6 +42,7 @@ class StockCreate(BaseModel):
     shares: float = 0
     cost: float = 0
     price: float = 0
+    currency: str = "SGD"
 
 
 class StockUpdate(BaseModel):
@@ -24,6 +50,7 @@ class StockUpdate(BaseModel):
     shares: float | None = None
     cost: float | None = None
     price: float | None = None
+    currency: str | None = None
 
 
 class StockOut(BaseModel):
@@ -33,6 +60,7 @@ class StockOut(BaseModel):
     shares: float
     cost: float
     price: float
+    currency: str
 
 
 class SimpleItemCreate(BaseModel):
@@ -88,8 +116,10 @@ class SnapshotOut(BaseModel):
 class PortfolioOut(BaseModel):
     brokers: list[BrokerOut]
     stocks: list[StockOut]
+    broker_cash: list[BrokerCashOut]
     bonds: list[SimpleItemOut]
     cash: list[SimpleItemOut]
     other: list[SimpleItemOut]
+    insurance: list[SimpleItemOut]
     liabilities: list[SimpleItemOut]
     cpf: CPFOut

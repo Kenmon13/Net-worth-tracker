@@ -1,21 +1,189 @@
-import { useRef } from 'react';
-import type { Broker, Stock } from '../types';
-import { fmt } from '../utils';
+import { useRef, useState } from 'react';
+import type { Broker, BrokerCash, ForexRates, Stock } from '../types';
+import { currencySymbol, fmt } from '../utils';
 import * as api from '../api';
+import type { SymbolResult } from '../api';
+import NumberInput from './NumberInput';
+
+const CASH_CURRENCIES = ['SGD', 'USD', 'HKD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'MYR', 'CNY'];
+
+const ENDOWUS_FUNDS = [
+  'Capital Group New Perspective Fund',
+  'GMO Quality Investment Fund',
+  'PIMCO GIS Income Fund SGD-Hedged',
+  'AB American Income Portfolio Fund SGD-Hedged',
+  'Allianz Income and Growth Fund SGD-Hedged (Dist.)',
+  'AllianzGI Global Artificial Intelligence Fund',
+  'Franklin Templeton Technology Fund',
+  'Fidelity Global Technology Fund',
+  'Thematics AM AI and Robotics Fund',
+  'iShares US Index Fund (IE) S&P 500',
+  'Amundi Singapore Straits Times (STI) Fund',
+  'Amundi Prime USA Fund',
+  'Amundi Core MSCI Emerging Markets Fund',
+  'iShares Developed World Index Fund (IE)',
+  'Amundi Index MSCI World Fund',
+  'BlackRock BGF Next Generation Technology Fund',
+  'Allianz Europe Equity Growth Fund',
+  'Janus Henderson Horizon Biotechnology Fund',
+  'Ashoka WhiteOak India Opportunities Fund',
+  'T. Rowe Price Funds SICAV - Global Value Equity Fund SGD-Hedged',
+  'M&G Emerging Markets Bond Fund SGD-Hedged',
+  'BNY Mellon U.S. Municipal Infrastructure Debt Fund SGD-Hedged (Dist.)',
+  'Franklin Shariah Technology Fund',
+  'GMO Climate Change Investment Fund',
+  'Allspring Climate Transition Global Investment Grade Credit Fund',
+  'Franklin Global Sukuk Fund (Dist.)',
+  'Schroder ISF Asian Opportunities Fund',
+  'BlackRock BGF European Equity Income Fund SGD-Hedged (Dist.)',
+  'PIMCO GIS Income Fund SGD-Hedged (Dist.)',
+];
+
+function FundNameInput({ defaultValue, onChange }: { defaultValue: string; onChange: (value: string) => void }) {
+  const [query, setQuery] = useState(defaultValue);
+  const [show, setShow] = useState(false);
+
+  const filtered = query
+    ? ENDOWUS_FUNDS.filter((f) => f.toLowerCase().includes(query.toLowerCase()))
+    : ENDOWUS_FUNDS;
+
+  function handleInput(value: string) {
+    setQuery(value);
+    onChange(value);
+    setShow(true);
+  }
+
+  function selectFund(name: string) {
+    setQuery(name);
+    onChange(name);
+    setShow(false);
+  }
+
+  return (
+    <div className="relative">
+      <input
+        className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
+        placeholder="e.g. Global Technology Fund"
+        value={query}
+        onChange={(e) => handleInput(e.target.value)}
+        onFocus={() => setShow(true)}
+        onBlur={() => setTimeout(() => setShow(false), 150)}
+      />
+      {show && filtered.length > 0 && (
+        <div className="absolute z-20 top-full left-0 mt-1 w-full bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg max-h-[200px] overflow-y-auto">
+          {filtered.map((f) => (
+            <button
+              key={f}
+              className="w-full text-left px-2.5 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                selectFund(f);
+              }}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: string) => void }) {
+  const [query, setQuery] = useState(stock.symbol);
+  const [suggestions, setSuggestions] = useState<SymbolResult[]>([]);
+  const [show, setShow] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  function handleInput(value: string) {
+    setQuery(value);
+    onChange(value);
+    clearTimeout(searchTimer.current);
+    if (value.length >= 1) {
+      searchTimer.current = setTimeout(async () => {
+        const results = await api.searchSymbols(value);
+        setSuggestions(results);
+        setShow(true);
+      }, 300);
+    } else {
+      setSuggestions([]);
+      setShow(false);
+    }
+  }
+
+  function selectSymbol(symbol: string) {
+    setQuery(symbol);
+    onChange(symbol);
+    setShow(false);
+    setSuggestions([]);
+  }
+
+  return (
+    <div className="relative">
+      <input
+        className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
+        placeholder="AAPL"
+        value={query}
+        onChange={(e) => handleInput(e.target.value)}
+        onFocus={() => { if (suggestions.length > 0) setShow(true); }}
+        onBlur={() => setTimeout(() => setShow(false), 150)}
+      />
+      {show && suggestions.length > 0 && (
+        <div className="absolute z-20 top-full left-0 mt-1 w-[280px] bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg max-h-[240px] overflow-y-auto">
+          {suggestions.map((s) => (
+            <button
+              key={s.symbol}
+              className="w-full text-left px-2.5 py-2 text-sm hover:bg-slate-700 cursor-pointer flex justify-between items-center gap-2"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                selectSymbol(s.symbol);
+              }}
+            >
+              <div>
+                <span className="text-indigo-300 font-semibold">{s.symbol}</span>
+                <span className="text-slate-400 ml-2 text-xs">{s.name}</span>
+              </div>
+              <span className="text-slate-500 text-xs shrink-0">{s.exchange}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   broker: Broker;
   stocks: Stock[];
+  brokerCash: BrokerCash[];
+  forexRates: ForexRates;
   onRefresh: () => void;
 }
 
-export default function BrokerGroup({ broker, stocks, onRefresh }: Props) {
+export default function BrokerGroup({ broker, stocks, brokerCash, forexRates, onRefresh }: Props) {
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
-  const brokerSum = stocks.reduce((t, s) => t + s.shares * s.price, 0);
+  function toSGD(amount: number, currency: string): number {
+    return amount * (forexRates[currency] || 1);
+  }
+
+  const brokerStocksSGD = stocks.reduce((t, s) => t + toSGD(s.shares * s.price, s.currency), 0);
+  const brokerCashSGD = brokerCash.reduce((t, c) => t + toSGD(c.amount, c.currency), 0);
+  const brokerTotal = brokerStocksSGD + brokerCashSGD;
+
+  const existingCurrencies = brokerCash.map((c) => c.currency);
+  const availableCurrencies = CASH_CURRENCIES.filter((c) => !existingCurrencies.includes(c));
+
+  const isSimpleBroker = broker.name === 'EndowUs';
+  const isVesting = broker.name === 'Vesting Stocks';
 
   async function handleAddStock() {
-    await api.createStock(broker.id);
+    if (isSimpleBroker) {
+      await api.createStock(broker.id, { shares: 1 });
+    } else {
+      await api.createStock(broker.id);
+    }
     onRefresh();
   }
 
@@ -36,6 +204,26 @@ export default function BrokerGroup({ broker, stocks, onRefresh }: Props) {
     }, 500);
   }
 
+  function handleCashChange(cashId: number, value: string) {
+    const key = `broker-cash-${cashId}`;
+    clearTimeout(debounceTimers.current[key]);
+    debounceTimers.current[key] = setTimeout(async () => {
+      await api.updateBrokerCash(cashId, parseFloat(value) || 0);
+      onRefresh();
+    }, 500);
+  }
+
+  async function handleAddCash(currency: string) {
+    await api.createBrokerCash(broker.id, currency);
+    setShowCurrencyPicker(false);
+    onRefresh();
+  }
+
+  async function handleDeleteCash(id: number) {
+    await api.deleteBrokerCash(id);
+    onRefresh();
+  }
+
   async function handleDeleteStock(id: number) {
     await api.deleteStock(id);
     onRefresh();
@@ -46,7 +234,7 @@ export default function BrokerGroup({ broker, stocks, onRefresh }: Props) {
       <div className="flex justify-between items-center mb-2.5 pb-2 border-b border-slate-700">
         <div className="font-semibold text-base text-indigo-300">{broker.name}</div>
         <div className="flex items-center gap-2">
-          <span className="text-green-500 font-semibold">{fmt(brokerSum)}</span>
+          <span className="text-green-500 font-semibold">{fmt(brokerTotal, 'SGD')}</span>
           <button
             onClick={handleRemoveBroker}
             className="bg-red-950 hover:bg-red-900 text-white px-2.5 py-1.5 rounded-md text-sm"
@@ -56,70 +244,221 @@ export default function BrokerGroup({ broker, stocks, onRefresh }: Props) {
         </div>
       </div>
 
-      {stocks.length > 0 && (
-        <div className="grid grid-cols-[1.2fr_0.7fr_0.9fr_0.9fr_1fr_1fr_auto] gap-2 mb-1 text-[11px] text-slate-400 uppercase">
-          <div>Symbol</div>
-          <div>Shares</div>
-          <div>Buy Price</div>
-          <div>Current</div>
-          <div>Value</div>
-          <div>P/L</div>
-          <div></div>
+      {isSimpleBroker ? (
+        <>
+          {stocks.length > 0 && (
+            <div className="grid grid-cols-[2fr_1fr_auto] gap-2 mb-1 text-[11px] text-slate-400 uppercase">
+              <div>Fund Name</div>
+              <div>Value</div>
+              <div></div>
+            </div>
+          )}
+          {stocks.map((s) => (
+            <div key={s.id} className="grid grid-cols-[2fr_1fr_auto] gap-2 mb-2.5">
+              <FundNameInput
+                defaultValue={s.symbol}
+                onChange={(v) => handleStockChange(s, 'symbol', v)}
+              />
+              <NumberInput
+                defaultValue={s.price}
+                onChange={(v) => {
+                  const key = `${s.id}-price`;
+                  clearTimeout(debounceTimers.current[key]);
+                  debounceTimers.current[key] = setTimeout(async () => {
+                    await api.updateStock(s.id, { price: parseFloat(v) || 0 });
+                    onRefresh();
+                  }, 500);
+                }}
+              />
+              <button
+                onClick={() => handleDeleteStock(s.id)}
+                className="bg-red-950 hover:bg-red-900 text-white px-2.5 py-1.5 rounded-md text-sm"
+              >
+                x
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={handleAddStock}
+            className="mt-1.5 bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2 rounded-md text-sm"
+          >
+            + Add Index
+          </button>
+        </>
+      ) : isVesting ? (
+        <>
+          {stocks.length > 0 && (
+            <div className="grid grid-cols-[1.2fr_0.7fr_0.9fr_1fr_auto] gap-2 mb-1 text-[11px] text-slate-400 uppercase">
+              <div>Symbol</div>
+              <div>Shares</div>
+              <div>Current</div>
+              <div>SGD Value</div>
+              <div></div>
+            </div>
+          )}
+          {stocks.map((s) => {
+            const cur = s.currency || 'SGD';
+            const value = s.shares * s.price;
+            const sgdValue = toSGD(value, cur);
+
+            return (
+              <div key={s.id} className="grid grid-cols-[1.2fr_0.7fr_0.9fr_1fr_auto] gap-2 mb-2.5">
+                <SymbolInput
+                  stock={s}
+                  onChange={(v) => handleStockChange(s, 'symbol', v)}
+                />
+                <NumberInput
+                  defaultValue={s.shares}
+                  step="1"
+                  decimals={0}
+                  onChange={(v) => handleStockChange(s, 'shares', v)}
+                />
+                <div className="self-center text-slate-200 text-sm px-2.5">{s.price ? fmt(s.price, cur) : '—'}</div>
+                <div className="self-center text-green-500 font-semibold text-sm">
+                  {s.price ? fmt(Math.abs(sgdValue), 'SGD') : '—'}
+                </div>
+                <button
+                  onClick={() => handleDeleteStock(s.id)}
+                  className="bg-red-950 hover:bg-red-900 text-white px-2.5 py-1.5 rounded-md text-sm"
+                >
+                  x
+                </button>
+              </div>
+            );
+          })}
+          <button
+            onClick={handleAddStock}
+            className="mt-1.5 bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2 rounded-md text-sm"
+          >
+            + Add Stock
+          </button>
+        </>
+      ) : (
+        <>
+          {stocks.length > 0 && (
+            <div className="grid grid-cols-[1.2fr_0.7fr_0.9fr_0.9fr_1fr_1fr_0.8fr_auto] gap-2 mb-1 text-[11px] text-slate-400 uppercase">
+              <div>Symbol</div>
+              <div>Shares</div>
+              <div>{'\u00A0'}Price</div>
+              <div>Current</div>
+              <div>Value</div>
+              <div>P/L</div>
+              <div>SGD Value</div>
+              <div></div>
+            </div>
+          )}
+
+          {stocks.map((s) => {
+            const isShort = s.shares < 0;
+            const value = s.shares * s.price;
+            const costTotal = s.shares * s.cost;
+            const pl = value - costTotal;
+            const absCost = Math.abs(costTotal);
+            const plPct = absCost > 0 ? (pl / absCost) * 100 : 0;
+            const isPositive = pl >= 0;
+            const plSign = isPositive ? '+' : '-';
+            const cur = s.currency || 'SGD';
+            const plText = absCost > 0 ? `${plSign}${fmt(Math.abs(pl), cur)} (${plSign}${Math.abs(plPct).toFixed(2)}%)` : '\u2014';
+            const sgdValue = toSGD(value, cur);
+
+            return (
+              <div key={s.id} className="grid grid-cols-[1.2fr_0.7fr_0.9fr_0.9fr_1fr_1fr_0.8fr_auto] gap-2 mb-2.5">
+                <SymbolInput
+                  stock={s}
+                  onChange={(value) => handleStockChange(s, 'symbol', value)}
+                />
+                <NumberInput
+                  defaultValue={s.shares}
+                  step="1"
+                  decimals={0}
+                  onChange={(v) => handleStockChange(s, 'shares', v)}
+                />
+                <NumberInput
+                  defaultValue={s.cost}
+                  onChange={(v) => handleStockChange(s, 'cost', v)}
+                />
+                <div className="self-center text-slate-200 text-sm px-2.5">{s.price ? fmt(s.price, cur) : '—'}</div>
+                <div className={`self-center font-semibold text-sm ${isShort ? 'text-orange-400' : 'text-green-500'}`}>
+                  {fmt(Math.abs(value), cur)}{isShort ? ' (S)' : ''}
+                </div>
+                <div className={`self-center font-semibold text-sm ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                  {plText}
+                </div>
+                <div className="self-center text-slate-300 text-sm font-semibold">
+                  {s.price ? fmt(Math.abs(sgdValue), 'SGD') : '—'}
+                </div>
+                <button
+                  onClick={() => handleDeleteStock(s.id)}
+                  className="bg-red-950 hover:bg-red-900 text-white px-2.5 py-1.5 rounded-md text-sm"
+                >
+                  x
+                </button>
+              </div>
+            );
+          })}
+
+          <button
+            onClick={handleAddStock}
+            className="mt-1.5 bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2 rounded-md text-sm"
+          >
+            + Add Stock
+          </button>
+        </>
+      )}
+
+      {/* Cash entries */}
+      {brokerCash.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-slate-700">
+          {brokerCash.map((c) => (
+            <div key={c.id} className="flex items-center gap-2 mb-2">
+              <span className="text-xs text-slate-400 uppercase w-[60px]">Cash ({c.currency})</span>
+              <NumberInput
+                defaultValue={c.amount}
+                className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-[150px] focus:outline-none focus:border-indigo-500"
+                onChange={(v) => handleCashChange(c.id, v)}
+              />
+              <span className="text-xs text-slate-500">{c.currency !== 'SGD' ? `= ${fmt(toSGD(c.amount, c.currency), 'SGD')}` : ''}</span>
+              <button
+                onClick={() => handleDeleteCash(c.id)}
+                className="bg-red-950 hover:bg-red-900 text-white px-2 py-1 rounded-md text-xs ml-auto"
+              >
+                x
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
-      {stocks.map((s) => {
-        const value = s.shares * s.price;
-        const cost = s.shares * s.cost;
-        const pl = value - cost;
-        const plPct = cost > 0 ? (pl / cost) * 100 : 0;
-        const isPositive = pl >= 0;
-        const sign = isPositive ? '+' : '-';
-        const plText = cost > 0 ? `${sign}${fmt(Math.abs(pl))} (${sign}${Math.abs(plPct).toFixed(2)}%)` : '\u2014';
-
-        return (
-          <div key={s.id} className="grid grid-cols-[1.2fr_0.7fr_0.9fr_0.9fr_1fr_1fr_auto] gap-2 mb-2.5">
-            <input
-              className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
-              placeholder="AAPL"
-              defaultValue={s.symbol}
-              onChange={(e) => handleStockChange(s, 'symbol', e.target.value)}
-            />
-            <input
-              type="number"
-              step="0.0001"
-              className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
-              defaultValue={s.shares}
-              onChange={(e) => handleStockChange(s, 'shares', e.target.value)}
-            />
-            <input
-              type="number"
-              step="0.01"
-              className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
-              defaultValue={s.cost}
-              onChange={(e) => handleStockChange(s, 'cost', e.target.value)}
-            />
-            <div className="self-center text-slate-200 text-sm px-2.5">{s.price ? fmt(s.price) : '—'}</div>
-            <div className="self-center text-green-500 font-semibold text-sm text-right">{fmt(value)}</div>
-            <div className={`self-center font-semibold text-sm ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-              {plText}
-            </div>
+      {/* Add cash currency */}
+      <div className="mt-2 relative">
+        {availableCurrencies.length > 0 && (
+          <>
             <button
-              onClick={() => handleDeleteStock(s.id)}
-              className="bg-red-950 hover:bg-red-900 text-white px-2.5 py-1.5 rounded-md text-sm"
+              onClick={() => setShowCurrencyPicker(!showCurrencyPicker)}
+              onBlur={() => setTimeout(() => setShowCurrencyPicker(false), 150)}
+              className="bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2 rounded-md text-sm"
             >
-              x
+              + Add Cash
             </button>
-          </div>
-        );
-      })}
-
-      <button
-        onClick={handleAddStock}
-        className="mt-1.5 bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2 rounded-md text-sm"
-      >
-        + Add Stock
-      </button>
+            {showCurrencyPicker && (
+              <div className="absolute z-10 bottom-full left-0 mb-1 bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg">
+                {availableCurrencies.map((cur) => (
+                  <button
+                    key={cur}
+                    className="block w-full text-left px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleAddCash(cur);
+                    }}
+                  >
+                    {cur} ({currencySymbol(cur).trim()})
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
