@@ -18,7 +18,7 @@ COPY backend/pyproject.toml ./
 RUN uv sync --no-dev
 
 # Copy backend source
-COPY backend/*.py ./
+COPY backend/main.py backend/auth.py backend/database.py backend/models.py ./
 
 # Copy built frontend into backend/static
 COPY --from=frontend-build /app/frontend/dist ./static
