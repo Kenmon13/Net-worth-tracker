@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from auth import create_token, get_current_user, hash_password, verify_password
 from database import get_db, init_db
 from models import (
+    AuthRequest,
     BrokerCashCreate,
     BrokerCashOut,
     BrokerCashUpdate,
@@ -21,6 +23,8 @@ from models import (
     StockCreate,
     StockOut,
     StockUpdate,
+    TokenOut,
+    UserOut,
 )
 
 app = FastAPI(title="Net Worth Tracker API")
@@ -38,22 +42,75 @@ def startup():
     init_db()
 
 
+# ── Auth ────────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/auth/signup", response_model=TokenOut, status_code=201)
+def signup(body: AuthRequest):
+    if len(body.username.strip()) < 1:
+        raise HTTPException(400, "Username is required")
+    if len(body.password) < 4:
+        raise HTTPException(400, "Password must be at least 4 characters")
+    db = get_db()
+    existing = db.execute("SELECT id FROM users WHERE username=?", (body.username.strip(),)).fetchone()
+    if existing:
+        db.close()
+        raise HTTPException(409, "Username already taken")
+    cur = db.execute(
+        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+        (body.username.strip(), hash_password(body.password)),
+    )
+    user_id = cur.lastrowid
+    # Initialize CPF row for new user
+    db.execute("INSERT OR IGNORE INTO cpf (user_id, oa, sa, ma) VALUES (?, 0, 0, 0)", (user_id,))
+    db.commit()
+    db.close()
+    return TokenOut(access_token=create_token(user_id))
+
+
+@app.post("/api/auth/login", response_model=TokenOut)
+def login(body: AuthRequest):
+    db = get_db()
+    user = db.execute("SELECT id, password_hash FROM users WHERE username=?", (body.username.strip(),)).fetchone()
+    db.close()
+    if not user or not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(401, "Invalid username or password")
+    return TokenOut(access_token=create_token(user["id"]))
+
+
+@app.get("/api/auth/me", response_model=UserOut)
+def get_me(user_id: int = Depends(get_current_user)):
+    db = get_db()
+    user = db.execute("SELECT id, username FROM users WHERE id=?", (user_id,)).fetchone()
+    db.close()
+    if not user:
+        raise HTTPException(404, "User not found")
+    return dict(user)
+
+
 # ── Portfolio (read-only aggregate) ──────────────────────────────────────────
 
 
 @app.get("/api/portfolio", response_model=PortfolioOut)
-def get_portfolio():
+def get_portfolio(user_id: int = Depends(get_current_user)):
     db = get_db()
-    brokers = [dict(r) for r in db.execute("SELECT * FROM brokers ORDER BY position, id").fetchall()]
-    stocks = [dict(r) for r in db.execute("SELECT * FROM stocks ORDER BY id").fetchall()]
-    broker_cash = [dict(r) for r in db.execute("SELECT * FROM broker_cash ORDER BY id").fetchall()]
-    bonds = [dict(r) for r in db.execute("SELECT * FROM bonds ORDER BY id").fetchall()]
-    cash = [dict(r) for r in db.execute("SELECT * FROM cash ORDER BY id").fetchall()]
-    other = [dict(r) for r in db.execute("SELECT * FROM other_assets ORDER BY id").fetchall()]
-    insurance = [dict(r) for r in db.execute("SELECT * FROM insurance ORDER BY id").fetchall()]
-    liabilities = [dict(r) for r in db.execute("SELECT * FROM liabilities ORDER BY id").fetchall()]
-    cpf_row = dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE id=1").fetchone())
+    brokers = [dict(r) for r in db.execute("SELECT * FROM brokers WHERE user_id=? ORDER BY position, id", (user_id,)).fetchall()]
+    broker_ids = [b["id"] for b in brokers]
+    if broker_ids:
+        placeholders = ",".join("?" * len(broker_ids))
+        stocks = [dict(r) for r in db.execute(f"SELECT * FROM stocks WHERE broker_id IN ({placeholders}) ORDER BY id", broker_ids).fetchall()]
+        broker_cash = [dict(r) for r in db.execute(f"SELECT * FROM broker_cash WHERE broker_id IN ({placeholders}) ORDER BY id", broker_ids).fetchall()]
+    else:
+        stocks = []
+        broker_cash = []
+    bonds = [dict(r) for r in db.execute("SELECT * FROM bonds WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    cash = [dict(r) for r in db.execute("SELECT * FROM cash WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    other = [dict(r) for r in db.execute("SELECT * FROM other_assets WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    insurance = [dict(r) for r in db.execute("SELECT * FROM insurance WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    liabilities = [dict(r) for r in db.execute("SELECT * FROM liabilities WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    cpf_row = db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone()
     db.close()
+    cpf = CPFOut(**(dict(cpf_row) if cpf_row else {"oa": 0, "sa": 0, "ma": 0}))
     return PortfolioOut(
         brokers=brokers,
         stocks=stocks,
@@ -63,7 +120,7 @@ def get_portfolio():
         other=other,
         insurance=insurance,
         liabilities=liabilities,
-        cpf=CPFOut(**cpf_row),
+        cpf=cpf,
     )
 
 
@@ -71,34 +128,34 @@ def get_portfolio():
 
 
 @app.post("/api/brokers", response_model=BrokerOut, status_code=201)
-def create_broker(body: BrokerCreate):
+def create_broker(body: BrokerCreate, user_id: int = Depends(get_current_user)):
     db = get_db()
-    max_pos = db.execute("SELECT COALESCE(MAX(position),0) FROM brokers").fetchone()[0]
-    try:
-        cur = db.execute(
-            "INSERT INTO brokers (name, position) VALUES (?, ?)",
-            (body.name, max_pos + 1),
-        )
-        db.commit()
-    except Exception:
+    max_pos = db.execute("SELECT COALESCE(MAX(position),0) FROM brokers WHERE user_id=?", (user_id,)).fetchone()[0]
+    existing = db.execute("SELECT id FROM brokers WHERE user_id=? AND name=?", (user_id, body.name)).fetchone()
+    if existing:
         db.close()
         raise HTTPException(400, "Broker already exists")
+    cur = db.execute(
+        "INSERT INTO brokers (user_id, name, position) VALUES (?, ?, ?)",
+        (user_id, body.name, max_pos + 1),
+    )
+    db.commit()
     broker = dict(db.execute("SELECT * FROM brokers WHERE id=?", (cur.lastrowid,)).fetchone())
     db.close()
     return broker
 
 
 @app.patch("/api/brokers/{broker_id}", response_model=BrokerOut)
-def update_broker(broker_id: int, body: BrokerUpdate):
+def update_broker(broker_id: int, body: BrokerUpdate, user_id: int = Depends(get_current_user)):
     db = get_db()
-    existing = db.execute("SELECT * FROM brokers WHERE id=?", (broker_id,)).fetchone()
+    existing = db.execute("SELECT * FROM brokers WHERE id=? AND user_id=?", (broker_id, user_id)).fetchone()
     if not existing:
         db.close()
         raise HTTPException(404, "Broker not found")
     updates = body.model_dump(exclude_none=True)
     if updates:
         sets = ", ".join(f"{k}=?" for k in updates)
-        db.execute(f"UPDATE brokers SET {sets} WHERE id=?", (*updates.values(), broker_id))
+        db.execute(f"UPDATE brokers SET {sets} WHERE id=? AND user_id=?", (*updates.values(), broker_id, user_id))
         db.commit()
     broker = dict(db.execute("SELECT * FROM brokers WHERE id=?", (broker_id,)).fetchone())
     db.close()
@@ -106,9 +163,13 @@ def update_broker(broker_id: int, body: BrokerUpdate):
 
 
 @app.delete("/api/brokers/{broker_id}", status_code=204)
-def delete_broker(broker_id: int):
+def delete_broker(broker_id: int, user_id: int = Depends(get_current_user)):
     db = get_db()
-    db.execute("DELETE FROM brokers WHERE id=?", (broker_id,))
+    existing = db.execute("SELECT id FROM brokers WHERE id=? AND user_id=?", (broker_id, user_id)).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Broker not found")
+    db.execute("DELETE FROM brokers WHERE id=? AND user_id=?", (broker_id, user_id))
     db.commit()
     db.close()
 
@@ -117,8 +178,12 @@ def delete_broker(broker_id: int):
 
 
 @app.post("/api/broker-cash", response_model=BrokerCashOut, status_code=201)
-def create_broker_cash(body: BrokerCashCreate):
+def create_broker_cash(body: BrokerCashCreate, user_id: int = Depends(get_current_user)):
     db = get_db()
+    broker = db.execute("SELECT id FROM brokers WHERE id=? AND user_id=?", (body.broker_id, user_id)).fetchone()
+    if not broker:
+        db.close()
+        raise HTTPException(404, "Broker not found")
     cur = db.execute(
         "INSERT INTO broker_cash (broker_id, currency, amount) VALUES (?, ?, 0)",
         (body.broker_id, body.currency),
@@ -130,9 +195,12 @@ def create_broker_cash(body: BrokerCashCreate):
 
 
 @app.patch("/api/broker-cash/{cash_id}", response_model=BrokerCashOut)
-def update_broker_cash(cash_id: int, body: BrokerCashUpdate):
+def update_broker_cash(cash_id: int, body: BrokerCashUpdate, user_id: int = Depends(get_current_user)):
     db = get_db()
-    existing = db.execute("SELECT * FROM broker_cash WHERE id=?", (cash_id,)).fetchone()
+    existing = db.execute(
+        "SELECT bc.* FROM broker_cash bc JOIN brokers b ON bc.broker_id=b.id WHERE bc.id=? AND b.user_id=?",
+        (cash_id, user_id),
+    ).fetchone()
     if not existing:
         db.close()
         raise HTTPException(404, "Broker cash not found")
@@ -147,8 +215,15 @@ def update_broker_cash(cash_id: int, body: BrokerCashUpdate):
 
 
 @app.delete("/api/broker-cash/{cash_id}", status_code=204)
-def delete_broker_cash(cash_id: int):
+def delete_broker_cash(cash_id: int, user_id: int = Depends(get_current_user)):
     db = get_db()
+    existing = db.execute(
+        "SELECT bc.id FROM broker_cash bc JOIN brokers b ON bc.broker_id=b.id WHERE bc.id=? AND b.user_id=?",
+        (cash_id, user_id),
+    ).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Broker cash not found")
     db.execute("DELETE FROM broker_cash WHERE id=?", (cash_id,))
     db.commit()
     db.close()
@@ -158,8 +233,12 @@ def delete_broker_cash(cash_id: int):
 
 
 @app.post("/api/stocks", response_model=StockOut, status_code=201)
-def create_stock(body: StockCreate):
+def create_stock(body: StockCreate, user_id: int = Depends(get_current_user)):
     db = get_db()
+    broker = db.execute("SELECT id FROM brokers WHERE id=? AND user_id=?", (body.broker_id, user_id)).fetchone()
+    if not broker:
+        db.close()
+        raise HTTPException(404, "Broker not found")
     cur = db.execute(
         "INSERT INTO stocks (broker_id, symbol, shares, cost, price, currency) VALUES (?,?,?,?,?,?)",
         (body.broker_id, body.symbol, body.shares, body.cost, body.price, body.currency),
@@ -171,9 +250,12 @@ def create_stock(body: StockCreate):
 
 
 @app.patch("/api/stocks/{stock_id}", response_model=StockOut)
-def update_stock(stock_id: int, body: StockUpdate):
+def update_stock(stock_id: int, body: StockUpdate, user_id: int = Depends(get_current_user)):
     db = get_db()
-    existing = db.execute("SELECT * FROM stocks WHERE id=?", (stock_id,)).fetchone()
+    existing = db.execute(
+        "SELECT s.* FROM stocks s JOIN brokers b ON s.broker_id=b.id WHERE s.id=? AND b.user_id=?",
+        (stock_id, user_id),
+    ).fetchone()
     if not existing:
         db.close()
         raise HTTPException(404, "Stock not found")
@@ -188,8 +270,15 @@ def update_stock(stock_id: int, body: StockUpdate):
 
 
 @app.delete("/api/stocks/{stock_id}", status_code=204)
-def delete_stock(stock_id: int):
+def delete_stock(stock_id: int, user_id: int = Depends(get_current_user)):
     db = get_db()
+    existing = db.execute(
+        "SELECT s.id FROM stocks s JOIN brokers b ON s.broker_id=b.id WHERE s.id=? AND b.user_id=?",
+        (stock_id, user_id),
+    ).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Stock not found")
     db.execute("DELETE FROM stocks WHERE id=?", (stock_id,))
     db.commit()
     db.close()
@@ -224,12 +313,18 @@ def search_symbols(q: str = Query(min_length=1)):
 
 
 @app.post("/api/stocks/refresh-prices", response_model=list[StockOut])
-def refresh_stock_prices():
+def refresh_stock_prices(user_id: int = Depends(get_current_user)):
     """Fetch latest prices from Yahoo Finance for all stocks with a symbol."""
     import yfinance as yf
 
     db = get_db()
-    stocks = [dict(r) for r in db.execute("SELECT * FROM stocks WHERE symbol != ''").fetchall()]
+    stocks = [
+        dict(r)
+        for r in db.execute(
+            "SELECT s.* FROM stocks s JOIN brokers b ON s.broker_id=b.id WHERE s.symbol != '' AND b.user_id=?",
+            (user_id,),
+        ).fetchall()
+    ]
     if not stocks:
         db.close()
         return []
@@ -263,18 +358,27 @@ def refresh_stock_prices():
             db.execute(f"UPDATE stocks SET {sets} WHERE id=?", (*updates.values(), stock["id"]))
 
     db.commit()
-    updated = [dict(r) for r in db.execute("SELECT * FROM stocks ORDER BY id").fetchall()]
+    # Return only this user's stocks
+    broker_ids = [b["id"] for b in db.execute("SELECT id FROM brokers WHERE user_id=?", (user_id,)).fetchall()]
+    if broker_ids:
+        placeholders = ",".join("?" * len(broker_ids))
+        updated = [dict(r) for r in db.execute(f"SELECT * FROM stocks WHERE broker_id IN ({placeholders}) ORDER BY id", broker_ids).fetchall()]
+    else:
+        updated = []
     db.close()
     return updated
 
 
 @app.get("/api/forex")
-def get_forex_rates():
+def get_forex_rates(user_id: int = Depends(get_current_user)):
     """Return exchange rates to SGD for all currencies used by stocks."""
     import yfinance as yf
 
     db = get_db()
-    rows = db.execute("SELECT DISTINCT currency FROM stocks WHERE currency != '' AND currency != 'SGD'").fetchall()
+    rows = db.execute(
+        "SELECT DISTINCT s.currency FROM stocks s JOIN brokers b ON s.broker_id=b.id WHERE s.currency != '' AND s.currency != 'SGD' AND b.user_id=?",
+        (user_id,),
+    ).fetchall()
     db.close()
     currencies = [row[0] for row in rows]
 
@@ -297,38 +401,41 @@ def get_forex_rates():
 
 def _simple_routes(table: str, tag: str):
     @app.post(f"/api/{tag}", response_model=SimpleItemOut, status_code=201)
-    def create(body: SimpleItemCreate):
+    def create(body: SimpleItemCreate, user_id: int = Depends(get_current_user)):
         db = get_db()
-        cur = db.execute(f"INSERT INTO {table} (name, value) VALUES (?,?)", (body.name, body.value))
+        cur = db.execute(f"INSERT INTO {table} (user_id, name, value) VALUES (?,?,?)", (user_id, body.name, body.value))
         db.commit()
         row = dict(db.execute(f"SELECT * FROM {table} WHERE id=?", (cur.lastrowid,)).fetchone())
         db.close()
         return row
 
     @app.patch(f"/api/{tag}/{{item_id}}", response_model=SimpleItemOut)
-    def update(item_id: int, body: SimpleItemUpdate):
+    def update(item_id: int, body: SimpleItemUpdate, user_id: int = Depends(get_current_user)):
         db = get_db()
-        existing = db.execute(f"SELECT * FROM {table} WHERE id=?", (item_id,)).fetchone()
+        existing = db.execute(f"SELECT * FROM {table} WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
         if not existing:
             db.close()
             raise HTTPException(404, "Item not found")
         updates = body.model_dump(exclude_none=True)
         if updates:
             sets = ", ".join(f"{k}=?" for k in updates)
-            db.execute(f"UPDATE {table} SET {sets} WHERE id=?", (*updates.values(), item_id))
+            db.execute(f"UPDATE {table} SET {sets} WHERE id=? AND user_id=?", (*updates.values(), item_id, user_id))
             db.commit()
         row = dict(db.execute(f"SELECT * FROM {table} WHERE id=?", (item_id,)).fetchone())
         db.close()
         return row
 
     @app.delete(f"/api/{tag}/{{item_id}}", status_code=204)
-    def delete(item_id: int):
+    def delete(item_id: int, user_id: int = Depends(get_current_user)):
         db = get_db()
-        db.execute(f"DELETE FROM {table} WHERE id=?", (item_id,))
+        existing = db.execute(f"SELECT id FROM {table} WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
+        if not existing:
+            db.close()
+            raise HTTPException(404, "Item not found")
+        db.execute(f"DELETE FROM {table} WHERE id=? AND user_id=?", (item_id, user_id))
         db.commit()
         db.close()
 
-    # Give unique names to avoid FastAPI conflicts
     create.__name__ = f"create_{tag}"
     update.__name__ = f"update_{tag}"
     delete.__name__ = f"delete_{tag}"
@@ -345,22 +452,28 @@ _simple_routes("liabilities", "liabilities")
 
 
 @app.get("/api/cpf", response_model=CPFOut)
-def get_cpf():
+def get_cpf(user_id: int = Depends(get_current_user)):
     db = get_db()
-    row = dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE id=1").fetchone())
+    row = db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone()
     db.close()
-    return row
+    if not row:
+        return CPFOut(oa=0, sa=0, ma=0)
+    return CPFOut(**dict(row))
 
 
 @app.patch("/api/cpf", response_model=CPFOut)
-def update_cpf(body: CPFUpdate):
+def update_cpf(body: CPFUpdate, user_id: int = Depends(get_current_user)):
     db = get_db()
+    existing = db.execute("SELECT id FROM cpf WHERE user_id=?", (user_id,)).fetchone()
+    if not existing:
+        db.execute("INSERT INTO cpf (user_id, oa, sa, ma) VALUES (?, 0, 0, 0)", (user_id,))
+        db.commit()
     updates = body.model_dump(exclude_none=True)
     if updates:
         sets = ", ".join(f"{k}=?" for k in updates)
-        db.execute(f"UPDATE cpf SET {sets} WHERE id=1", (*updates.values(),))
+        db.execute(f"UPDATE cpf SET {sets} WHERE user_id=?", (*updates.values(), user_id))
         db.commit()
-    row = dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE id=1").fetchone())
+    row = dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone())
     db.close()
     return row
 
@@ -369,44 +482,43 @@ def update_cpf(body: CPFUpdate):
 
 
 @app.get("/api/snapshots", response_model=list[SnapshotOut])
-def list_snapshots():
+def list_snapshots(user_id: int = Depends(get_current_user)):
     db = get_db()
-    rows = [dict(r) for r in db.execute("SELECT * FROM snapshots ORDER BY date").fetchall()]
+    rows = [dict(r) for r in db.execute("SELECT * FROM snapshots WHERE user_id=? ORDER BY date", (user_id,)).fetchall()]
     db.close()
     return rows
 
 
 @app.post("/api/snapshots", response_model=SnapshotOut, status_code=201)
-def create_snapshot(body: SnapshotCreate):
+def create_snapshot(body: SnapshotCreate, user_id: int = Depends(get_current_user)):
     total = body.stocks + body.bonds + body.cash + body.cpf + body.other - body.liab
     db = get_db()
-    # Upsert: replace if same date exists
     db.execute(
-        """INSERT INTO snapshots (date, stocks, bonds, cash, cpf, other, liab, total)
-           VALUES (?,?,?,?,?,?,?,?)
-           ON CONFLICT(date) DO UPDATE SET
+        """INSERT INTO snapshots (user_id, date, stocks, bonds, cash, cpf, other, liab, total)
+           VALUES (?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(user_id, date) DO UPDATE SET
              stocks=excluded.stocks, bonds=excluded.bonds, cash=excluded.cash,
              cpf=excluded.cpf, other=excluded.other, liab=excluded.liab, total=excluded.total""",
-        (body.date, body.stocks, body.bonds, body.cash, body.cpf, body.other, body.liab, total),
+        (user_id, body.date, body.stocks, body.bonds, body.cash, body.cpf, body.other, body.liab, total),
     )
     db.commit()
-    row = dict(db.execute("SELECT * FROM snapshots WHERE date=?", (body.date,)).fetchone())
+    row = dict(db.execute("SELECT * FROM snapshots WHERE user_id=? AND date=?", (user_id, body.date)).fetchone())
     db.close()
     return row
 
 
 @app.delete("/api/snapshots/{snapshot_id}", status_code=204)
-def delete_snapshot(snapshot_id: int):
+def delete_snapshot(snapshot_id: int, user_id: int = Depends(get_current_user)):
     db = get_db()
-    db.execute("DELETE FROM snapshots WHERE id=?", (snapshot_id,))
+    db.execute("DELETE FROM snapshots WHERE id=? AND user_id=?", (snapshot_id, user_id))
     db.commit()
     db.close()
 
 
 @app.delete("/api/snapshots", status_code=204)
-def delete_all_snapshots():
+def delete_all_snapshots(user_id: int = Depends(get_current_user)):
     db = get_db()
-    db.execute("DELETE FROM snapshots")
+    db.execute("DELETE FROM snapshots WHERE user_id=?", (user_id,))
     db.commit()
     db.close()
 
@@ -415,17 +527,24 @@ def delete_all_snapshots():
 
 
 @app.get("/api/export")
-def export_data():
+def export_data(user_id: int = Depends(get_current_user)):
     db = get_db()
+    brokers = [dict(r) for r in db.execute("SELECT * FROM brokers WHERE user_id=? ORDER BY position, id", (user_id,)).fetchall()]
+    broker_ids = [b["id"] for b in brokers]
+    if broker_ids:
+        placeholders = ",".join("?" * len(broker_ids))
+        stocks = [dict(r) for r in db.execute(f"SELECT * FROM stocks WHERE broker_id IN ({placeholders}) ORDER BY id", broker_ids).fetchall()]
+    else:
+        stocks = []
     portfolio = {
-        "brokers": [dict(r) for r in db.execute("SELECT * FROM brokers ORDER BY position, id").fetchall()],
-        "stocks": [dict(r) for r in db.execute("SELECT * FROM stocks ORDER BY id").fetchall()],
-        "bonds": [dict(r) for r in db.execute("SELECT * FROM bonds ORDER BY id").fetchall()],
-        "cash": [dict(r) for r in db.execute("SELECT * FROM cash ORDER BY id").fetchall()],
-        "other": [dict(r) for r in db.execute("SELECT * FROM other_assets ORDER BY id").fetchall()],
-        "liabilities": [dict(r) for r in db.execute("SELECT * FROM liabilities ORDER BY id").fetchall()],
-        "cpf": dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE id=1").fetchone()),
-        "snapshots": [dict(r) for r in db.execute("SELECT * FROM snapshots ORDER BY date").fetchall()],
+        "brokers": brokers,
+        "stocks": stocks,
+        "bonds": [dict(r) for r in db.execute("SELECT * FROM bonds WHERE user_id=? ORDER BY id", (user_id,)).fetchall()],
+        "cash": [dict(r) for r in db.execute("SELECT * FROM cash WHERE user_id=? ORDER BY id", (user_id,)).fetchall()],
+        "other": [dict(r) for r in db.execute("SELECT * FROM other_assets WHERE user_id=? ORDER BY id", (user_id,)).fetchall()],
+        "liabilities": [dict(r) for r in db.execute("SELECT * FROM liabilities WHERE user_id=? ORDER BY id", (user_id,)).fetchall()],
+        "cpf": dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone() or {"oa": 0, "sa": 0, "ma": 0}),
+        "snapshots": [dict(r) for r in db.execute("SELECT * FROM snapshots WHERE user_id=? ORDER BY date", (user_id,)).fetchall()],
     }
     db.close()
     return JSONResponse(content=portfolio)

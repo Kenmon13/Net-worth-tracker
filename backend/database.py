@@ -12,12 +12,34 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
+def _column_names(conn: sqlite3.Connection, table: str) -> list[str]:
+    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone() is not None
+
+
 def init_db():
     conn = get_db()
+
+    # -- Users table --
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS brokers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            name TEXT NOT NULL,
             position INTEGER NOT NULL DEFAULT 0,
             cash REAL NOT NULL DEFAULT 0,
             cash_usd REAL NOT NULL DEFAULT 0,
@@ -43,70 +65,59 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS bonds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
             name TEXT NOT NULL DEFAULT '',
             value REAL NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS cash (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
             name TEXT NOT NULL DEFAULT '',
             value REAL NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS other_assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
             name TEXT NOT NULL DEFAULT '',
             value REAL NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS insurance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
             name TEXT NOT NULL DEFAULT '',
             value REAL NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS liabilities (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
             name TEXT NOT NULL DEFAULT '',
             value REAL NOT NULL DEFAULT 0
         );
-
-        CREATE TABLE IF NOT EXISTS cpf (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            oa REAL NOT NULL DEFAULT 0,
-            sa REAL NOT NULL DEFAULT 0,
-            ma REAL NOT NULL DEFAULT 0
-        );
-
-        INSERT OR IGNORE INTO cpf (id, oa, sa, ma) VALUES (1, 0, 0, 0);
-
-        CREATE TABLE IF NOT EXISTS snapshots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL UNIQUE,
-            stocks REAL NOT NULL DEFAULT 0,
-            bonds REAL NOT NULL DEFAULT 0,
-            cash REAL NOT NULL DEFAULT 0,
-            cpf REAL NOT NULL DEFAULT 0,
-            other REAL NOT NULL DEFAULT 0,
-            liab REAL NOT NULL DEFAULT 0,
-            total REAL NOT NULL DEFAULT 0
-        );
     """)
-    # Migrate: add columns if missing
-    broker_cols = [row[1] for row in conn.execute("PRAGMA table_info(brokers)").fetchall()]
+
+    # -- Migrate: add user_id to existing tables if missing --
+    for table in ("brokers", "bonds", "cash", "other_assets", "insurance", "liabilities"):
+        if "user_id" not in _column_names(conn, table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+
+    # -- Migrate: add columns if missing (existing migrations) --
+    broker_cols = _column_names(conn, "brokers")
     if "cash" not in broker_cols:
         conn.execute("ALTER TABLE brokers ADD COLUMN cash REAL NOT NULL DEFAULT 0")
     if "cash_usd" not in broker_cols:
         conn.execute("ALTER TABLE brokers ADD COLUMN cash_usd REAL NOT NULL DEFAULT 0")
     if "cash_hkd" not in broker_cols:
         conn.execute("ALTER TABLE brokers ADD COLUMN cash_hkd REAL NOT NULL DEFAULT 0")
-    stock_cols = [row[1] for row in conn.execute("PRAGMA table_info(stocks)").fetchall()]
+    stock_cols = _column_names(conn, "stocks")
     if "currency" not in stock_cols:
         conn.execute("ALTER TABLE stocks ADD COLUMN currency TEXT NOT NULL DEFAULT 'SGD'")
 
-    # Migrate old broker cash fields into broker_cash table
-    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-    if "broker_cash" in tables:
+    # -- Migrate old broker cash fields into broker_cash table --
+    if _table_exists(conn, "broker_cash"):
         brokers = conn.execute("SELECT id, cash, cash_usd, cash_hkd FROM brokers").fetchall()
         for b in brokers:
             existing = conn.execute("SELECT id FROM broker_cash WHERE broker_id=?", (b[0],)).fetchone()
@@ -117,6 +128,92 @@ def init_db():
                     conn.execute("INSERT INTO broker_cash (broker_id, currency, amount) VALUES (?, 'USD', ?)", (b[0], b[2]))
                 if b[3] and b[3] > 0:
                     conn.execute("INSERT INTO broker_cash (broker_id, currency, amount) VALUES (?, 'HKD', ?)", (b[0], b[3]))
+
+    # -- CPF: migrate from singleton to per-user --
+    cpf_cols = _column_names(conn, "cpf") if _table_exists(conn, "cpf") else []
+    if _table_exists(conn, "cpf") and "user_id" not in cpf_cols:
+        # Old singleton table — migrate to per-user
+        old_cpf = conn.execute("SELECT oa, sa, ma FROM cpf WHERE id=1").fetchone()
+        conn.execute("DROP TABLE cpf")
+        conn.execute("""
+            CREATE TABLE cpf (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL UNIQUE,
+                oa REAL NOT NULL DEFAULT 0,
+                sa REAL NOT NULL DEFAULT 0,
+                ma REAL NOT NULL DEFAULT 0
+            )
+        """)
+        if old_cpf:
+            conn.execute(
+                "INSERT INTO cpf (user_id, oa, sa, ma) VALUES (1, ?, ?, ?)",
+                (old_cpf[0], old_cpf[1], old_cpf[2]),
+            )
+    elif not _table_exists(conn, "cpf"):
+        conn.execute("""
+            CREATE TABLE cpf (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL UNIQUE,
+                oa REAL NOT NULL DEFAULT 0,
+                sa REAL NOT NULL DEFAULT 0,
+                ma REAL NOT NULL DEFAULT 0
+            )
+        """)
+
+    # -- Snapshots: migrate to per-user --
+    if not _table_exists(conn, "snapshots"):
+        conn.execute("""
+            CREATE TABLE snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1,
+                date TEXT NOT NULL,
+                stocks REAL NOT NULL DEFAULT 0,
+                bonds REAL NOT NULL DEFAULT 0,
+                cash REAL NOT NULL DEFAULT 0,
+                cpf REAL NOT NULL DEFAULT 0,
+                other REAL NOT NULL DEFAULT 0,
+                liab REAL NOT NULL DEFAULT 0,
+                total REAL NOT NULL DEFAULT 0,
+                UNIQUE(user_id, date)
+            )
+        """)
+    else:
+        snap_cols = _column_names(conn, "snapshots")
+        if "user_id" not in snap_cols:
+            # Recreate with per-user unique constraint
+            rows = conn.execute("SELECT date, stocks, bonds, cash, cpf, other, liab, total FROM snapshots").fetchall()
+            conn.execute("DROP TABLE snapshots")
+            conn.execute("""
+                CREATE TABLE snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    date TEXT NOT NULL,
+                    stocks REAL NOT NULL DEFAULT 0,
+                    bonds REAL NOT NULL DEFAULT 0,
+                    cash REAL NOT NULL DEFAULT 0,
+                    cpf REAL NOT NULL DEFAULT 0,
+                    other REAL NOT NULL DEFAULT 0,
+                    liab REAL NOT NULL DEFAULT 0,
+                    total REAL NOT NULL DEFAULT 0,
+                    UNIQUE(user_id, date)
+                )
+            """)
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO snapshots (user_id, date, stocks, bonds, cash, cpf, other, liab, total) VALUES (1,?,?,?,?,?,?,?,?)",
+                    tuple(r),
+                )
+
+    # -- Indexes --
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_brokers_user ON brokers(user_id);
+        CREATE INDEX IF NOT EXISTS idx_bonds_user ON bonds(user_id);
+        CREATE INDEX IF NOT EXISTS idx_cash_user ON cash(user_id);
+        CREATE INDEX IF NOT EXISTS idx_other_user ON other_assets(user_id);
+        CREATE INDEX IF NOT EXISTS idx_insurance_user ON insurance(user_id);
+        CREATE INDEX IF NOT EXISTS idx_liabilities_user ON liabilities(user_id);
+        CREATE INDEX IF NOT EXISTS idx_snapshots_user ON snapshots(user_id);
+    """)
 
     conn.commit()
     conn.close()

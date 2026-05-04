@@ -123,3 +123,18 @@ class PortfolioOut(BaseModel):
     insurance: list[SimpleItemOut]
     liabilities: list[SimpleItemOut]
     cpf: CPFOut
+
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
