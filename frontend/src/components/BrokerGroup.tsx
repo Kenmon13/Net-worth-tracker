@@ -93,7 +93,7 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
   const [query, setQuery] = useState(stock.symbol);
   const [suggestions, setSuggestions] = useState<SymbolResult[]>([]);
   const [show, setShow] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   function handleInput(value: string) {
     setQuery(value);

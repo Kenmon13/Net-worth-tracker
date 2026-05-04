@@ -3,7 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import type { Portfolio, Snapshot } from '../types';
+import type { Snapshot } from '../types';
 import * as api from '../api';
 import { fmt } from '../utils';
 import NumberInput from '../components/NumberInput';
@@ -236,7 +236,7 @@ export default function HistoryPage() {
                   contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }}
                   itemStyle={{ color: '#e2e8f0' }}
                   labelStyle={{ color: '#94a3b8' }}
-                  formatter={(value: number) => ['$' + Math.round(Math.abs(value)).toLocaleString('en-US'), 'Amount']}
+                  formatter={(value: unknown) => ['$' + Math.round(Math.abs(Number(value))).toLocaleString('en-US'), 'Amount']}
                 />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                   {breakdownBarData.map((entry, i) => (
@@ -276,7 +276,7 @@ export default function HistoryPage() {
                   outerRadius={90}
                   innerRadius={45}
                   paddingAngle={2}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(1)}%`}
+                  label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ''} ${((percent ?? 0) * 100).toFixed(1)}%`}
                   labelLine={{ stroke: '#94a3b8' }}
                 >
                   {activePieData.map((entry, i) => (
@@ -285,7 +285,7 @@ export default function HistoryPage() {
                 </Pie>
                 <Tooltip
                   contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }}
-                  formatter={(value: number) => [fmt(value), 'Amount']}
+                  formatter={(value: unknown) => [fmt(Number(value)), 'Amount']}
                 />
                 <Legend
                   verticalAlign="bottom"
@@ -324,8 +324,8 @@ export default function HistoryPage() {
               />
               <Tooltip
                 contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }}
-                formatter={(value: number) => ['$' + Math.round(value).toLocaleString('en-US'), 'Net Worth']}
-                labelFormatter={(label: string) => `Date: ${label}`}
+                formatter={(value: unknown) => ['$' + Math.round(Number(value)).toLocaleString('en-US'), 'Net Worth']}
+                labelFormatter={(label: unknown) => `Date: ${label}`}
               />
               <Area type="monotone" dataKey="total" stroke="#6366f1" strokeWidth={2.5} fill="url(#colorTotal)" dot={{ r: 4, fill: '#6366f1', stroke: '#e2e8f0', strokeWidth: 1.5 }} />
             </AreaChart>
