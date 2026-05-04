@@ -1,8 +1,8 @@
 # -- Build frontend --
 FROM oven/bun:1 AS frontend-build
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/bun.lock* ./
-RUN bun install --frozen-lockfile
+COPY frontend/package.json ./
+RUN bun install
 COPY frontend/ ./
 RUN bun run build
 
@@ -14,15 +14,15 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Install Python dependencies
-COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-dev
+COPY backend/pyproject.toml ./
+RUN uv sync --no-dev
 
 # Copy backend source
-COPY backend/ ./
+COPY backend/*.py ./
 
 # Copy built frontend into backend/static
 COPY --from=frontend-build /app/frontend/dist ./static
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD [".venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
