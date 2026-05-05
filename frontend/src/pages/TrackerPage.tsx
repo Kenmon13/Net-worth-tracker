@@ -98,17 +98,17 @@ export default function TrackerPage() {
 
       {/* Equities section */}
       <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-5" style={{ gridColumn: '1 / -1' }}>
-        <h2 className="text-lg font-semibold mb-3 flex justify-between items-center">
+        <h2 className="text-lg font-semibold mb-3 flex flex-wrap justify-between items-center gap-2">
           Equities
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={handleRefreshPrices}
               disabled={refreshing}
-              className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-3 py-1.5 rounded-md text-sm font-semibold"
+              className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold"
             >
               {refreshing ? 'Refreshing...' : 'Refresh Prices'}
             </button>
-            <span className="text-base font-semibold text-green-500">
+            <span className="text-sm sm:text-base font-semibold text-green-500">
               ${stocksTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
