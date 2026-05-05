@@ -4,14 +4,15 @@ interface Props {
   stocksTotal: number;
   bondsTotal: number;
   cashTotal: number;
+  otherLiquidTotal: number;
   cpfTotal: number;
   insuranceTotal: number;
   otherTotal: number;
   liabTotal: number;
 }
 
-export default function Summary({ stocksTotal, bondsTotal, cashTotal, cpfTotal, insuranceTotal, otherTotal, liabTotal }: Props) {
-  const liquidTotal = stocksTotal + bondsTotal + cashTotal;
+export default function Summary({ stocksTotal, bondsTotal, cashTotal, otherLiquidTotal, cpfTotal, insuranceTotal, otherTotal, liabTotal }: Props) {
+  const liquidTotal = stocksTotal + bondsTotal + cashTotal + otherLiquidTotal;
   const illiquidTotal = cpfTotal + insuranceTotal + otherTotal;
   const net = liquidTotal + illiquidTotal - liabTotal;
 
@@ -27,6 +28,7 @@ export default function Summary({ stocksTotal, bondsTotal, cashTotal, cpfTotal, 
               ['Equities', stocksTotal],
               ['Bonds', bondsTotal],
               ['Cash', cashTotal],
+              ['Other', otherLiquidTotal],
             ].map(([label, val]) => (
               <div key={label as string} className="bg-black/25 px-3 py-2 rounded-lg text-xs sm:text-sm">
                 {label as string}: <b>{fmt(val as number)}</b>

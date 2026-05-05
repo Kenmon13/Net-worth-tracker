@@ -1,4 +1,4 @@
-import type { Broker, BrokerCash, CPF, ForexRates, Portfolio, SimpleItem, Snapshot, Stock } from './types';
+import type { Broker, BrokerCash, CPF, CurrencyItem, ForexRates, Portfolio, SimpleItem, Snapshot, Stock } from './types';
 import { clearToken, getToken } from './auth';
 
 const BASE = '/api';
@@ -132,6 +132,24 @@ export const updateSimpleItem = (category: string, id: number, data: Partial<Sim
   }).then(r => json<SimpleItem>(r));
 
 export const deleteSimpleItem = (category: string, id: number) =>
+  fetch(`${BASE}/${category}/${id}`, { method: 'DELETE', headers: authHeaders() });
+
+// Currency items (other_liquid)
+export const createCurrencyItem = (category: string, name = '', value = 0, currency = 'SGD') =>
+  fetch(`${BASE}/${category}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name, value, currency }),
+  }).then(r => json<CurrencyItem>(r));
+
+export const updateCurrencyItem = (category: string, id: number, data: Partial<CurrencyItem>) =>
+  fetch(`${BASE}/${category}/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  }).then(r => json<CurrencyItem>(r));
+
+export const deleteCurrencyItem = (category: string, id: number) =>
   fetch(`${BASE}/${category}/${id}`, { method: 'DELETE', headers: authHeaders() });
 
 // CPF

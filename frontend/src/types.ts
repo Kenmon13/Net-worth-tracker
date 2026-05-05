@@ -32,6 +32,13 @@ export interface SimpleItem {
   value: number;
 }
 
+export interface CurrencyItem {
+  id: number;
+  name: string;
+  value: number;
+  currency: string;
+}
+
 export interface CPF {
   oa: number;
   sa: number;
@@ -45,6 +52,7 @@ export interface Portfolio {
   bonds: SimpleItem[];
   cash: SimpleItem[];
   other: SimpleItem[];
+  other_liquid: CurrencyItem[];
   insurance: SimpleItem[];
   liabilities: SimpleItem[];
   cpf: CPF;

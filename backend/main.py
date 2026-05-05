@@ -20,6 +20,9 @@ from models import (
     BrokerUpdate,
     CPFOut,
     CPFUpdate,
+    CurrencyItemCreate,
+    CurrencyItemOut,
+    CurrencyItemUpdate,
     PortfolioOut,
     SimpleItemCreate,
     SimpleItemOut,
@@ -142,6 +145,7 @@ def get_portfolio(user_id: int = Depends(get_current_user)):
     bonds = [dict(r) for r in db.execute("SELECT * FROM bonds WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     cash = [dict(r) for r in db.execute("SELECT * FROM cash WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     other = [dict(r) for r in db.execute("SELECT * FROM other_assets WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    other_liquid = [dict(r) for r in db.execute("SELECT * FROM other_assets_liquid WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     insurance = [dict(r) for r in db.execute("SELECT * FROM insurance WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     liabilities = [dict(r) for r in db.execute("SELECT * FROM liabilities WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     cpf_row = db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone()
@@ -154,6 +158,7 @@ def get_portfolio(user_id: int = Depends(get_current_user)):
         bonds=bonds,
         cash=cash,
         other=other,
+        other_liquid=other_liquid,
         insurance=insurance,
         liabilities=liabilities,
         cpf=cpf,
@@ -407,7 +412,7 @@ def refresh_stock_prices(user_id: int = Depends(get_current_user)):
 
 @app.get("/api/forex")
 def get_forex_rates(user_id: int = Depends(get_current_user)):
-    """Return exchange rates to SGD for all currencies used by stocks."""
+    """Return exchange rates to SGD for all currencies used by stocks and other liquid assets."""
     import yfinance as yf
 
     db = get_db()
@@ -415,8 +420,12 @@ def get_forex_rates(user_id: int = Depends(get_current_user)):
         "SELECT DISTINCT s.currency FROM stocks s JOIN brokers b ON s.broker_id=b.id WHERE s.currency != '' AND s.currency != 'SGD' AND b.user_id=?",
         (user_id,),
     ).fetchall()
+    other_rows = db.execute(
+        "SELECT DISTINCT currency FROM other_assets_liquid WHERE currency != 'SGD' AND user_id=?",
+        (user_id,),
+    ).fetchall()
     db.close()
-    currencies = [row[0] for row in rows]
+    currencies = list(set([row[0] for row in rows] + [row[0] for row in other_rows]))
 
     rates: dict[str, float] = {"SGD": 1.0}
     for cur in currencies:
@@ -482,6 +491,50 @@ _simple_routes("cash", "cash")
 _simple_routes("other_assets", "other")
 _simple_routes("insurance", "insurance")
 _simple_routes("liabilities", "liabilities")
+
+
+# ── Other Assets Liquid (with currency) ──────────────────────────────────────
+
+@app.post("/api/other_liquid", response_model=CurrencyItemOut, status_code=201)
+def create_other_liquid(body: CurrencyItemCreate, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO other_assets_liquid (user_id, name, value, currency) VALUES (?,?,?,?)",
+        (user_id, body.name, body.value, body.currency),
+    )
+    db.commit()
+    row = dict(db.execute("SELECT * FROM other_assets_liquid WHERE id=?", (cur.lastrowid,)).fetchone())
+    db.close()
+    return row
+
+
+@app.patch("/api/other_liquid/{item_id}", response_model=CurrencyItemOut)
+def update_other_liquid(item_id: int, body: CurrencyItemUpdate, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    existing = db.execute("SELECT * FROM other_assets_liquid WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Item not found")
+    updates = body.model_dump(exclude_none=True)
+    if updates:
+        sets = ", ".join(f"{k}=?" for k in updates)
+        db.execute(f"UPDATE other_assets_liquid SET {sets} WHERE id=? AND user_id=?", (*updates.values(), item_id, user_id))
+        db.commit()
+    row = dict(db.execute("SELECT * FROM other_assets_liquid WHERE id=?", (item_id,)).fetchone())
+    db.close()
+    return row
+
+
+@app.delete("/api/other_liquid/{item_id}", status_code=204)
+def delete_other_liquid(item_id: int, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    existing = db.execute("SELECT id FROM other_assets_liquid WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Item not found")
+    db.execute("DELETE FROM other_assets_liquid WHERE id=? AND user_id=?", (item_id, user_id))
+    db.commit()
+    db.close()
 
 
 # ── CPF ──────────────────────────────────────────────────────────────────────
@@ -580,6 +633,7 @@ def export_data(user_id: int = Depends(get_current_user)):
     bonds = [dict(r) for r in db.execute("SELECT * FROM bonds WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     cash = [dict(r) for r in db.execute("SELECT * FROM cash WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     other = [dict(r) for r in db.execute("SELECT * FROM other_assets WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    other_liquid = [dict(r) for r in db.execute("SELECT * FROM other_assets_liquid WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     insurance = [dict(r) for r in db.execute("SELECT * FROM insurance WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     liabilities = [dict(r) for r in db.execute("SELECT * FROM liabilities WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     cpf_row = db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone()
@@ -608,6 +662,9 @@ def export_data(user_id: int = Depends(get_current_user)):
     for c in broker_cash_rows:
         if c["currency"] and c["currency"] != "SGD":
             currencies.add(c["currency"])
+    for item in other_liquid:
+        if item["currency"] and item["currency"] != "SGD":
+            currencies.add(item["currency"])
 
     rates: dict[str, float] = {"SGD": 1.0}
     for cur in currencies:
@@ -644,6 +701,12 @@ def export_data(user_id: int = Depends(get_current_user)):
     for item in cash:
         ws.append(["Cash", item["name"] or "—", item["value"]])
         grand_total += item["value"]
+
+    # Other Assets (Liquid)
+    for item in other_liquid:
+        sgd_val = to_sgd(item["value"], item.get("currency", "SGD"))
+        ws.append(["Other (Liquid)", item["name"] or "—", sgd_val])
+        grand_total += sgd_val
 
     # CPF
     for key, label in [("oa", "Ordinary Account"), ("sa", "Special Account"), ("ma", "Medisave Account")]:

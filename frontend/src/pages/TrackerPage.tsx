@@ -4,6 +4,7 @@ import * as api from '../api';
 import Summary from '../components/Summary';
 import BrokerGroup from '../components/BrokerGroup';
 import SimpleList from '../components/SimpleList';
+import CurrencyList from '../components/CurrencyList';
 import CPFSection from '../components/CPFSection';
 
 const BROKERS_LIST = [
@@ -36,6 +37,7 @@ export default function TrackerPage() {
   const stocksTotal = portfolio.stocks.reduce((t, s) => t + toSGD(s.shares * s.price, s.currency), 0) + brokerCashTotal;
   const bondsTotal = portfolio.bonds.reduce((t, i) => t + i.value, 0);
   const cashTotal = portfolio.cash.reduce((t, i) => t + i.value, 0);
+  const otherLiquidTotal = portfolio.other_liquid.reduce((t, i) => t + toSGD(i.value, i.currency), 0);
   const otherTotal = portfolio.other.reduce((t, i) => t + i.value, 0);
   const insuranceTotal = portfolio.insurance.reduce((t, i) => t + i.value, 0);
   const liabTotal = portfolio.liabilities.reduce((t, i) => t + i.value, 0);
@@ -87,6 +89,7 @@ export default function TrackerPage() {
         stocksTotal={stocksTotal}
         bondsTotal={bondsTotal}
         cashTotal={cashTotal}
+        otherLiquidTotal={otherLiquidTotal}
         cpfTotal={cpfTotal}
         insuranceTotal={insuranceTotal}
         otherTotal={otherTotal}
@@ -207,6 +210,14 @@ export default function TrackerPage() {
           category="cash"
           items={portfolio.cash}
           placeholder="e.g. Chase Checking"
+          onRefresh={refresh}
+        />
+        <CurrencyList
+          title="Other Assets (Liquid)"
+          category="other_liquid"
+          items={portfolio.other_liquid}
+          placeholder="e.g. Gold, Crypto"
+          forexRates={forexRates}
           onRefresh={refresh}
         />
       </div>

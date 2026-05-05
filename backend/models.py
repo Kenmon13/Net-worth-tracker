@@ -79,6 +79,25 @@ class SimpleItemOut(BaseModel):
     value: float
 
 
+class CurrencyItemCreate(BaseModel):
+    name: str = ""
+    value: float = 0
+    currency: str = "SGD"
+
+
+class CurrencyItemUpdate(BaseModel):
+    name: str | None = None
+    value: float | None = None
+    currency: str | None = None
+
+
+class CurrencyItemOut(BaseModel):
+    id: int
+    name: str
+    value: float
+    currency: str
+
+
 class CPFUpdate(BaseModel):
     oa: float | None = None
     sa: float | None = None
@@ -120,6 +139,7 @@ class PortfolioOut(BaseModel):
     bonds: list[SimpleItemOut]
     cash: list[SimpleItemOut]
     other: list[SimpleItemOut]
+    other_liquid: list[CurrencyItemOut]
     insurance: list[SimpleItemOut]
     liabilities: list[SimpleItemOut]
     cpf: CPFOut

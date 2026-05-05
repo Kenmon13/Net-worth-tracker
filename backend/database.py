@@ -98,6 +98,14 @@ def init_db():
             name TEXT NOT NULL DEFAULT '',
             value REAL NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS other_assets_liquid (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            name TEXT NOT NULL DEFAULT '',
+            value REAL NOT NULL DEFAULT 0,
+            currency TEXT NOT NULL DEFAULT 'SGD'
+        );
     """)
 
     # -- Migrate: add user_id to existing tables if missing --
@@ -238,6 +246,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_insurance_user ON insurance(user_id);
         CREATE INDEX IF NOT EXISTS idx_liabilities_user ON liabilities(user_id);
         CREATE INDEX IF NOT EXISTS idx_snapshots_user ON snapshots(user_id);
+        CREATE INDEX IF NOT EXISTS idx_other_liquid_user ON other_assets_liquid(user_id);
     """)
 
     conn.commit()
