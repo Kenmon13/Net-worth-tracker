@@ -18,6 +18,7 @@ export default function TrackerPage() {
   const [brokerInput, setBrokerInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
@@ -68,12 +69,11 @@ export default function TrackerPage() {
   }
 
   async function handleExport() {
-    const data = await api.exportData();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = await api.exportData();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `networth-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `networth-${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -133,15 +133,34 @@ export default function TrackerPage() {
           <div className="relative">
             <input
               className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-[220px] focus:outline-none focus:border-indigo-500"
+              autoComplete="off"
               placeholder="Type broker name..."
               value={brokerInput}
               onChange={(e) => {
                 setBrokerInput(e.target.value);
                 setShowSuggestions(true);
+                setHighlightedIndex(-1);
               }}
               onFocus={() => setShowSuggestions(true)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
               onKeyDown={(e) => {
+                if (showSuggestions && filteredSuggestions.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setHighlightedIndex((i) => (i < filteredSuggestions.length - 1 ? i + 1 : 0));
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setHighlightedIndex((i) => (i > 0 ? i - 1 : filteredSuggestions.length - 1));
+                    return;
+                  }
+                  if (e.key === 'Enter' && highlightedIndex >= 0) {
+                    e.preventDefault();
+                    handleAddBroker(filteredSuggestions[highlightedIndex]);
+                    return;
+                  }
+                }
                 if (e.key === 'Enter') handleAddBroker();
               }}
             />
@@ -150,10 +169,10 @@ export default function TrackerPage() {
                 ref={suggestionsRef}
                 className="absolute z-10 top-full left-0 mt-1 w-[220px] bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg"
               >
-                {filteredSuggestions.map((b) => (
+                {filteredSuggestions.map((b, i) => (
                   <button
                     key={b}
-                    className="w-full text-left px-2.5 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer"
+                    className={`w-full text-left px-2.5 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer ${i === highlightedIndex ? 'bg-slate-700' : ''}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       handleAddBroker(b);
@@ -231,7 +250,7 @@ export default function TrackerPage() {
           onClick={handleExport}
           className="bg-indigo-500 hover:bg-indigo-600 text-white px-3.5 py-2 rounded-md text-sm font-semibold"
         >
-          Export JSON
+          Export Excel
         </button>
       </div>
     </>

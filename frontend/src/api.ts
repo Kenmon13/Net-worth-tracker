@@ -161,4 +161,7 @@ export const deleteAllSnapshots = () =>
 
 // Export
 export const exportData = () =>
-  fetch(`${BASE}/export`, { headers: authHeaders() }).then(r => r.json());
+  fetch(`${BASE}/export`, { headers: authHeaders() }).then(r => {
+    if (!r.ok) throw new Error('Export failed');
+    return r.blob();
+  });

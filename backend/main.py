@@ -1,8 +1,11 @@
+import io
+import time
+from collections import defaultdict
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from auth import create_token, get_current_user, hash_password, verify_password
@@ -71,13 +74,43 @@ def signup(body: AuthRequest):
     return TokenOut(access_token=create_token(user_id))
 
 
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_SECONDS = 30
+# {username: {"count": int, "locked_until": float}}
+_login_attempts: dict[str, dict] = defaultdict(lambda: {"count": 0, "locked_until": 0.0})
+
+
 @app.post("/api/auth/login", response_model=TokenOut)
 def login(body: AuthRequest):
+    username = body.username.strip()
+    record = _login_attempts[username]
+    now = time.time()
+
+    if record["count"] >= MAX_LOGIN_ATTEMPTS and now < record["locked_until"]:
+        remaining = int(record["locked_until"] - now) + 1
+        raise HTTPException(429, f"Too many failed attempts. Try again in {remaining}s.")
+
+    if now >= record["locked_until"]:
+        if record["count"] >= MAX_LOGIN_ATTEMPTS:
+            record["count"] = 0
+            record["locked_until"] = 0.0
+
     db = get_db()
-    user = db.execute("SELECT id, password_hash FROM users WHERE username=?", (body.username.strip(),)).fetchone()
+    user = db.execute("SELECT id, password_hash FROM users WHERE username=?", (username,)).fetchone()
     db.close()
     if not user or not verify_password(body.password, user["password_hash"]):
-        raise HTTPException(401, "Invalid username or password")
+        record["count"] += 1
+        remaining_attempts = MAX_LOGIN_ATTEMPTS - record["count"]
+        if record["count"] >= MAX_LOGIN_ATTEMPTS:
+            record["locked_until"] = now + LOCKOUT_SECONDS
+            raise HTTPException(429, f"Too many failed attempts. Try again in {LOCKOUT_SECONDS}s.")
+        msg = "Invalid username or password."
+        if remaining_attempts <= 2:
+            msg += f" {remaining_attempts} attempt(s) remaining."
+        raise HTTPException(401, msg)
+
+    record["count"] = 0
+    record["locked_until"] = 0.0
     return TokenOut(access_token=create_token(user["id"]))
 
 
@@ -531,26 +564,134 @@ def delete_all_snapshots(user_id: int = Depends(get_current_user)):
 
 @app.get("/api/export")
 def export_data(user_id: int = Depends(get_current_user)):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
     db = get_db()
     brokers = [dict(r) for r in db.execute("SELECT * FROM brokers WHERE user_id=? ORDER BY position, id", (user_id,)).fetchall()]
     broker_ids = [b["id"] for b in brokers]
     if broker_ids:
         placeholders = ",".join("?" * len(broker_ids))
         stocks = [dict(r) for r in db.execute(f"SELECT * FROM stocks WHERE broker_id IN ({placeholders}) ORDER BY id", broker_ids).fetchall()]
+        broker_cash_rows = [dict(r) for r in db.execute(f"SELECT * FROM broker_cash WHERE broker_id IN ({placeholders}) ORDER BY id", broker_ids).fetchall()]
     else:
         stocks = []
-    portfolio = {
-        "brokers": brokers,
-        "stocks": stocks,
-        "bonds": [dict(r) for r in db.execute("SELECT * FROM bonds WHERE user_id=? ORDER BY id", (user_id,)).fetchall()],
-        "cash": [dict(r) for r in db.execute("SELECT * FROM cash WHERE user_id=? ORDER BY id", (user_id,)).fetchall()],
-        "other": [dict(r) for r in db.execute("SELECT * FROM other_assets WHERE user_id=? ORDER BY id", (user_id,)).fetchall()],
-        "liabilities": [dict(r) for r in db.execute("SELECT * FROM liabilities WHERE user_id=? ORDER BY id", (user_id,)).fetchall()],
-        "cpf": dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone() or {"oa": 0, "sa": 0, "ma": 0}),
-        "snapshots": [dict(r) for r in db.execute("SELECT * FROM snapshots WHERE user_id=? ORDER BY date", (user_id,)).fetchall()],
-    }
+        broker_cash_rows = []
+    bonds = [dict(r) for r in db.execute("SELECT * FROM bonds WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    cash = [dict(r) for r in db.execute("SELECT * FROM cash WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    other = [dict(r) for r in db.execute("SELECT * FROM other_assets WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    insurance = [dict(r) for r in db.execute("SELECT * FROM insurance WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    liabilities = [dict(r) for r in db.execute("SELECT * FROM liabilities WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    cpf_row = db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone()
+    cpf = dict(cpf_row) if cpf_row else {"oa": 0, "sa": 0, "ma": 0}
     db.close()
-    return JSONResponse(content=portfolio)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Net Worth"
+
+    header_font = Font(bold=True)
+    header_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    ws.append(["Category", "Item", "Value (SGD)"])
+    for col in range(1, 4):
+        cell = ws.cell(row=1, column=col)
+        cell.font = header_font
+        cell.fill = header_fill
+
+    # Fetch forex rates for currency conversion to SGD
+    import yfinance as yf
+
+    currencies = set()
+    for s in stocks:
+        if s["currency"] and s["currency"] != "SGD":
+            currencies.add(s["currency"])
+    for c in broker_cash_rows:
+        if c["currency"] and c["currency"] != "SGD":
+            currencies.add(c["currency"])
+
+    rates: dict[str, float] = {"SGD": 1.0}
+    for cur in currencies:
+        try:
+            ticker = yf.Ticker(f"{cur}SGD=X")
+            info = ticker.info
+            rate = info.get("regularMarketPrice") or info.get("previousClose")
+            if rate is not None:
+                rates[cur] = float(rate)
+        except Exception:
+            pass
+
+    def to_sgd(amount: float, currency: str) -> float:
+        return amount * rates.get(currency, 1.0)
+
+    grand_total = 0.0
+
+    # Equity — grouped by broker
+    for broker in brokers:
+        broker_stocks = [s for s in stocks if s["broker_id"] == broker["id"]]
+        broker_cash_items = [c for c in broker_cash_rows if c["broker_id"] == broker["id"]]
+        stock_total = sum(to_sgd(s["shares"] * s["price"], s.get("currency", "SGD")) for s in broker_stocks)
+        cash_total = sum(to_sgd(c["amount"], c.get("currency", "SGD")) for c in broker_cash_items)
+        broker_total = stock_total + cash_total
+        ws.append(["Equity", broker["name"], broker_total])
+        grand_total += broker_total
+
+    # Bonds
+    for item in bonds:
+        ws.append(["Bonds", item["name"] or "—", item["value"]])
+        grand_total += item["value"]
+
+    # Cash
+    for item in cash:
+        ws.append(["Cash", item["name"] or "—", item["value"]])
+        grand_total += item["value"]
+
+    # CPF
+    for key, label in [("oa", "Ordinary Account"), ("sa", "Special Account"), ("ma", "Medisave Account")]:
+        ws.append(["CPF", label, cpf[key]])
+        grand_total += cpf[key]
+
+    # Insurance
+    for item in insurance:
+        ws.append(["Insurance", item["name"] or "—", item["value"]])
+        grand_total += item["value"]
+
+    # Other Assets
+    for item in other:
+        ws.append(["Other Assets", item["name"] or "—", item["value"]])
+        grand_total += item["value"]
+
+    # Liabilities (subtract)
+    for item in liabilities:
+        ws.append(["Liabilities", item["name"] or "—", -abs(item["value"])])
+        grand_total -= abs(item["value"])
+
+    # Total row
+    ws.append([])
+    total_row = ws.max_row + 1
+    ws.append(["TOTAL", "", grand_total])
+    for col in range(1, 4):
+        ws.cell(row=total_row, column=col).font = Font(bold=True)
+
+    # Auto-size columns
+    ws.column_dimensions["A"].width = 15
+    ws.column_dimensions["B"].width = 40
+    ws.column_dimensions["C"].width = 18
+
+    # Format value column as numbers
+    for row in range(2, ws.max_row + 1):
+        cell = ws.cell(row=row, column=3)
+        if isinstance(cell.value, (int, float)):
+            cell.number_format = '#,##0.00'
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=networth-export.xlsx"},
+    )
 
 
 # ── Serve frontend static files (production) ────────────────────────────────

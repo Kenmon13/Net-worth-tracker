@@ -204,6 +204,30 @@ def init_db():
                     tuple(r),
                 )
 
+    # -- Migrate: remove UNIQUE constraint on brokers.name (now per-user) --
+    broker_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='brokers'"
+    ).fetchone()[0]
+    if "UNIQUE" in broker_sql.upper() and "name" in broker_sql.lower():
+        rows = conn.execute("SELECT id, user_id, name, position, cash, cash_usd, cash_hkd FROM brokers").fetchall()
+        conn.execute("DROP TABLE brokers")
+        conn.execute("""
+            CREATE TABLE brokers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1,
+                name TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                cash REAL NOT NULL DEFAULT 0,
+                cash_usd REAL NOT NULL DEFAULT 0,
+                cash_hkd REAL NOT NULL DEFAULT 0
+            )
+        """)
+        for r in rows:
+            conn.execute(
+                "INSERT INTO brokers (id, user_id, name, position, cash, cash_usd, cash_hkd) VALUES (?,?,?,?,?,?,?)",
+                tuple(r),
+            )
+
     # -- Indexes --
     conn.executescript("""
         CREATE INDEX IF NOT EXISTS idx_brokers_user ON brokers(user_id);
