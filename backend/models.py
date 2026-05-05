@@ -138,7 +138,7 @@ class PortfolioOut(BaseModel):
     broker_cash: list[BrokerCashOut]
     bonds: list[SimpleItemOut]
     cash: list[SimpleItemOut]
-    other: list[SimpleItemOut]
+    other: list[CurrencyItemOut]
     other_liquid: list[CurrencyItemOut]
     insurance: list[SimpleItemOut]
     liabilities: list[SimpleItemOut]

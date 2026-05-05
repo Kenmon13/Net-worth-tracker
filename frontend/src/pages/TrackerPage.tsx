@@ -38,7 +38,7 @@ export default function TrackerPage() {
   const bondsTotal = portfolio.bonds.reduce((t, i) => t + i.value, 0);
   const cashTotal = portfolio.cash.reduce((t, i) => t + i.value, 0);
   const otherLiquidTotal = portfolio.other_liquid.reduce((t, i) => t + toSGD(i.value, i.currency), 0);
-  const otherTotal = portfolio.other.reduce((t, i) => t + i.value, 0);
+  const otherTotal = portfolio.other.reduce((t, i) => t + toSGD(i.value, i.currency), 0);
   const insuranceTotal = portfolio.insurance.reduce((t, i) => t + i.value, 0);
   const liabTotal = portfolio.liabilities.reduce((t, i) => t + i.value, 0);
   const cpfTotal = portfolio.cpf.oa + portfolio.cpf.sa + portfolio.cpf.ma;
@@ -233,11 +233,12 @@ export default function TrackerPage() {
           placeholder="e.g. Whole Life, ILP"
           onRefresh={refresh}
         />
-        <SimpleList
-          title="Other Assets"
+        <CurrencyList
+          title="Other Assets (Illiquid)"
           category="other"
           items={portfolio.other}
-          placeholder="e.g. Crypto, Real Estate"
+          placeholder="e.g. Real Estate, Collectibles"
+          forexRates={forexRates}
           onRefresh={refresh}
         />
       </div>

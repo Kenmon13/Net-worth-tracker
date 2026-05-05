@@ -82,7 +82,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL DEFAULT 1,
             name TEXT NOT NULL DEFAULT '',
-            value REAL NOT NULL DEFAULT 0
+            value REAL NOT NULL DEFAULT 0,
+            currency TEXT NOT NULL DEFAULT 'SGD'
         );
 
         CREATE TABLE IF NOT EXISTS insurance (
@@ -121,6 +122,10 @@ def init_db():
         conn.execute("ALTER TABLE brokers ADD COLUMN cash_usd REAL NOT NULL DEFAULT 0")
     if "cash_hkd" not in broker_cols:
         conn.execute("ALTER TABLE brokers ADD COLUMN cash_hkd REAL NOT NULL DEFAULT 0")
+    other_cols = _column_names(conn, "other_assets")
+    if "currency" not in other_cols:
+        conn.execute("ALTER TABLE other_assets ADD COLUMN currency TEXT NOT NULL DEFAULT 'SGD'")
+
     stock_cols = _column_names(conn, "stocks")
     if "currency" not in stock_cols:
         conn.execute("ALTER TABLE stocks ADD COLUMN currency TEXT NOT NULL DEFAULT 'SGD'")

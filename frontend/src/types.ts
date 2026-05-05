@@ -51,7 +51,7 @@ export interface Portfolio {
   broker_cash: BrokerCash[];
   bonds: SimpleItem[];
   cash: SimpleItem[];
-  other: SimpleItem[];
+  other: CurrencyItem[];
   other_liquid: CurrencyItem[];
   insurance: SimpleItem[];
   liabilities: SimpleItem[];

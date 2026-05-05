@@ -420,12 +420,16 @@ def get_forex_rates(user_id: int = Depends(get_current_user)):
         "SELECT DISTINCT s.currency FROM stocks s JOIN brokers b ON s.broker_id=b.id WHERE s.currency != '' AND s.currency != 'SGD' AND b.user_id=?",
         (user_id,),
     ).fetchall()
-    other_rows = db.execute(
+    other_liquid_rows = db.execute(
         "SELECT DISTINCT currency FROM other_assets_liquid WHERE currency != 'SGD' AND user_id=?",
         (user_id,),
     ).fetchall()
+    other_rows = db.execute(
+        "SELECT DISTINCT currency FROM other_assets WHERE currency != 'SGD' AND user_id=?",
+        (user_id,),
+    ).fetchall()
     db.close()
-    currencies = list(set([row[0] for row in rows] + [row[0] for row in other_rows]))
+    currencies = list(set([row[0] for row in rows] + [row[0] for row in other_liquid_rows] + [row[0] for row in other_rows]))
 
     rates: dict[str, float] = {"SGD": 1.0}
     for cur in currencies:
@@ -488,53 +492,60 @@ def _simple_routes(table: str, tag: str):
 
 _simple_routes("bonds", "bonds")
 _simple_routes("cash", "cash")
-_simple_routes("other_assets", "other")
 _simple_routes("insurance", "insurance")
 _simple_routes("liabilities", "liabilities")
 
 
-# ── Other Assets Liquid (with currency) ──────────────────────────────────────
-
-@app.post("/api/other_liquid", response_model=CurrencyItemOut, status_code=201)
-def create_other_liquid(body: CurrencyItemCreate, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    cur = db.execute(
-        "INSERT INTO other_assets_liquid (user_id, name, value, currency) VALUES (?,?,?,?)",
-        (user_id, body.name, body.value, body.currency),
-    )
-    db.commit()
-    row = dict(db.execute("SELECT * FROM other_assets_liquid WHERE id=?", (cur.lastrowid,)).fetchone())
-    db.close()
-    return row
+# ── Currency-aware item CRUD factory ─────────────────────────────────────────
 
 
-@app.patch("/api/other_liquid/{item_id}", response_model=CurrencyItemOut)
-def update_other_liquid(item_id: int, body: CurrencyItemUpdate, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    existing = db.execute("SELECT * FROM other_assets_liquid WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
-    if not existing:
-        db.close()
-        raise HTTPException(404, "Item not found")
-    updates = body.model_dump(exclude_none=True)
-    if updates:
-        sets = ", ".join(f"{k}=?" for k in updates)
-        db.execute(f"UPDATE other_assets_liquid SET {sets} WHERE id=? AND user_id=?", (*updates.values(), item_id, user_id))
+def _currency_routes(table: str, tag: str):
+    @app.post(f"/api/{tag}", response_model=CurrencyItemOut, status_code=201)
+    def create(body: CurrencyItemCreate, user_id: int = Depends(get_current_user)):
+        db = get_db()
+        cur = db.execute(
+            f"INSERT INTO {table} (user_id, name, value, currency) VALUES (?,?,?,?)",
+            (user_id, body.name, body.value, body.currency),
+        )
         db.commit()
-    row = dict(db.execute("SELECT * FROM other_assets_liquid WHERE id=?", (item_id,)).fetchone())
-    db.close()
-    return row
-
-
-@app.delete("/api/other_liquid/{item_id}", status_code=204)
-def delete_other_liquid(item_id: int, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    existing = db.execute("SELECT id FROM other_assets_liquid WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
-    if not existing:
+        row = dict(db.execute(f"SELECT * FROM {table} WHERE id=?", (cur.lastrowid,)).fetchone())
         db.close()
-        raise HTTPException(404, "Item not found")
-    db.execute("DELETE FROM other_assets_liquid WHERE id=? AND user_id=?", (item_id, user_id))
-    db.commit()
-    db.close()
+        return row
+
+    @app.patch(f"/api/{tag}/{{item_id}}", response_model=CurrencyItemOut)
+    def update(item_id: int, body: CurrencyItemUpdate, user_id: int = Depends(get_current_user)):
+        db = get_db()
+        existing = db.execute(f"SELECT * FROM {table} WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
+        if not existing:
+            db.close()
+            raise HTTPException(404, "Item not found")
+        updates = body.model_dump(exclude_none=True)
+        if updates:
+            sets = ", ".join(f"{k}=?" for k in updates)
+            db.execute(f"UPDATE {table} SET {sets} WHERE id=? AND user_id=?", (*updates.values(), item_id, user_id))
+            db.commit()
+        row = dict(db.execute(f"SELECT * FROM {table} WHERE id=?", (item_id,)).fetchone())
+        db.close()
+        return row
+
+    @app.delete(f"/api/{tag}/{{item_id}}", status_code=204)
+    def delete(item_id: int, user_id: int = Depends(get_current_user)):
+        db = get_db()
+        existing = db.execute(f"SELECT id FROM {table} WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
+        if not existing:
+            db.close()
+            raise HTTPException(404, "Item not found")
+        db.execute(f"DELETE FROM {table} WHERE id=? AND user_id=?", (item_id, user_id))
+        db.commit()
+        db.close()
+
+    create.__name__ = f"create_{tag}"
+    update.__name__ = f"update_{tag}"
+    delete.__name__ = f"delete_{tag}"
+
+
+_currency_routes("other_assets", "other")
+_currency_routes("other_assets_liquid", "other_liquid")
 
 
 # ── CPF ──────────────────────────────────────────────────────────────────────
@@ -665,6 +676,9 @@ def export_data(user_id: int = Depends(get_current_user)):
     for item in other_liquid:
         if item["currency"] and item["currency"] != "SGD":
             currencies.add(item["currency"])
+    for item in other:
+        if item.get("currency") and item["currency"] != "SGD":
+            currencies.add(item["currency"])
 
     rates: dict[str, float] = {"SGD": 1.0}
     for cur in currencies:
@@ -718,10 +732,11 @@ def export_data(user_id: int = Depends(get_current_user)):
         ws.append(["Insurance", item["name"] or "—", item["value"]])
         grand_total += item["value"]
 
-    # Other Assets
+    # Other Assets (Illiquid)
     for item in other:
-        ws.append(["Other Assets", item["name"] or "—", item["value"]])
-        grand_total += item["value"]
+        sgd_val = to_sgd(item["value"], item.get("currency", "SGD"))
+        ws.append(["Other (Illiquid)", item["name"] or "—", sgd_val])
+        grand_total += sgd_val
 
     # Liabilities (subtract)
     for item in liabilities:
