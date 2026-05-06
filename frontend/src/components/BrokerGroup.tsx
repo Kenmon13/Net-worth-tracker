@@ -5,6 +5,7 @@ import { currencySymbol, fmt } from '../utils';
 import * as api from '../api';
 import type { SymbolResult } from '../api';
 import NumberInput from './NumberInput';
+import { POPULAR_STOCKS } from '../popularStocks';
 
 const CASH_CURRENCIES = ['SGD', 'USD', 'HKD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'MYR', 'CNY'];
 
@@ -105,6 +106,22 @@ function FundNameInput({ defaultValue, onChange }: { defaultValue: string; onCha
   );
 }
 
+function searchLocal(q: string): SymbolResult[] {
+  const upper = q.toUpperCase();
+  const lower = q.toLowerCase();
+  // Exact symbol prefix matches first, then name matches
+  const symbolMatches: SymbolResult[] = [];
+  const nameMatches: SymbolResult[] = [];
+  for (const s of POPULAR_STOCKS) {
+    if (s.symbol.toUpperCase().startsWith(upper)) {
+      symbolMatches.push({ symbol: s.symbol, name: s.name, type: 'EQUITY', exchange: s.exchange });
+    } else if (s.name.toLowerCase().includes(lower)) {
+      nameMatches.push({ symbol: s.symbol, name: s.name, type: 'EQUITY', exchange: s.exchange });
+    }
+  }
+  return [...symbolMatches, ...nameMatches].slice(0, 8);
+}
+
 function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: string) => void }) {
   const [query, setQuery] = useState(stock.symbol);
   const [suggestions, setSuggestions] = useState<SymbolResult[]>([]);
@@ -125,11 +142,20 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
     onChange(value);
     clearTimeout(searchTimer.current);
     if (value.length >= 1) {
+      // Show local results instantly
+      const local = searchLocal(value);
+      setSuggestions(local);
+      setShow(true);
+      updateDropdownPos();
+
+      // Fetch from Yahoo in background and merge new results
       searchTimer.current = setTimeout(async () => {
-        const results = await api.searchSymbols(value);
-        setSuggestions(results);
-        setShow(true);
-        updateDropdownPos();
+        const remote = await api.searchSymbols(value);
+        setSuggestions((prev) => {
+          const seen = new Set(prev.map((s) => s.symbol));
+          const merged = [...prev, ...remote.filter((r) => !seen.has(r.symbol))];
+          return merged.slice(0, 8);
+        });
       }, 150);
     } else {
       setSuggestions([]);
