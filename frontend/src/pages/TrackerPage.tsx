@@ -10,7 +10,7 @@ import CPFSection from '../components/CPFSection';
 const BROKERS_LIST = [
   'Fidelity', 'Schwab', 'Vanguard', 'Robinhood', 'E*TRADE',
   'Interactive Brokers', 'TD Ameritrade', 'Merrill', 'Webull',
-  'moomoo', 'Tiger Brokers', 'SGX', 'EndowUs', 'CDP', 'Vesting Stocks', 'Other',
+  'Moomoo', 'Tiger Brokers', 'SGX', 'EndowUs', 'CDP', 'Vesting Stocks', 'Other',
 ];
 
 export default function TrackerPage() {
@@ -137,6 +137,12 @@ export default function TrackerPage() {
             <input
               className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-[220px] focus:outline-none focus:border-indigo-500"
               autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              role="combobox"
+              aria-autocomplete="list"
+              name={`broker-search-${Date.now()}`}
               placeholder="Type broker name..."
               value={brokerInput}
               onChange={(e) => {
