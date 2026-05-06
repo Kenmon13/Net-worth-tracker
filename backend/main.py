@@ -384,6 +384,23 @@ def search_symbols(q: str = Query(min_length=1)):
     return _search_yahoo(q)
 
 
+@app.get("/api/stocks/price")
+def get_stock_price(symbol: str = Query(min_length=1)):
+    """Fetch the current price and currency for a single stock symbol."""
+    import yfinance as yf
+
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        price = info.get("regularMarketPrice") or info.get("currentPrice")
+        currency = info.get("currency", "USD")
+        if price is not None:
+            return {"symbol": symbol, "price": float(price), "currency": currency}
+    except Exception:
+        pass
+    return {"symbol": symbol, "price": None, "currency": None}
+
+
 @app.post("/api/stocks/refresh-prices", response_model=list[StockOut])
 def refresh_stock_prices(user_id: int = Depends(get_current_user)):
     """Fetch latest prices from Yahoo Finance for all stocks with a symbol."""

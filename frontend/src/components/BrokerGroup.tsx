@@ -122,10 +122,11 @@ function searchLocal(q: string): SymbolResult[] {
   return [...symbolMatches, ...nameMatches].slice(0, 8);
 }
 
-function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: string) => void }) {
+function SymbolInput({ stock, onChange, onSelect }: { stock: Stock; onChange: (value: string) => void; onSelect?: (symbol: string) => void }) {
   const [query, setQuery] = useState(stock.symbol);
   const [suggestions, setSuggestions] = useState<SymbolResult[]>([]);
   const [show, setShow] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
@@ -140,6 +141,7 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
   function handleInput(value: string) {
     setQuery(value);
     onChange(value);
+    setHighlightedIndex(-1);
     clearTimeout(searchTimer.current);
     if (value.length >= 1) {
       // Show local results instantly
@@ -168,6 +170,7 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
     onChange(symbol);
     setShow(false);
     setSuggestions([]);
+    onSelect?.(symbol);
   }
 
   return (
@@ -180,16 +183,31 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
         onChange={(e) => handleInput(e.target.value)}
         onFocus={() => { if (suggestions.length > 0) { updateDropdownPos(); setShow(true); } }}
         onBlur={() => setTimeout(() => setShow(false), 150)}
+        onKeyDown={(e) => {
+          if (!show || suggestions.length === 0) return;
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setHighlightedIndex((i) => (i < suggestions.length - 1 ? i + 1 : 0));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setHighlightedIndex((i) => (i > 0 ? i - 1 : suggestions.length - 1));
+          } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+            e.preventDefault();
+            selectSymbol(suggestions[highlightedIndex].symbol);
+          } else if (e.key === 'Escape') {
+            setShow(false);
+          }
+        }}
       />
       {show && suggestions.length > 0 && ReactDOM.createPortal(
         <div
           className="fixed z-50 w-[280px] bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg max-h-[240px] overflow-y-auto"
           style={{ top: dropdownPos.top, left: dropdownPos.left }}
         >
-          {suggestions.map((s) => (
+          {suggestions.map((s, i) => (
             <button
               key={s.symbol}
-              className="w-full text-left px-2.5 py-2 text-sm hover:bg-slate-700 cursor-pointer flex justify-between items-center gap-2"
+              className={`w-full text-left px-2.5 py-2 text-sm hover:bg-slate-700 cursor-pointer flex justify-between items-center gap-2 ${i === highlightedIndex ? 'bg-slate-700' : ''}`}
               onMouseDown={(e) => {
                 e.preventDefault();
                 selectSymbol(s.symbol);
@@ -259,6 +277,16 @@ export default function BrokerGroup({ broker, stocks, brokerCash, forexRates, on
       await api.updateStock(stock.id, { [field]: parsed });
       onRefresh();
     }, 500);
+  }
+
+  async function handleSymbolSelect(stockId: number, symbol: string) {
+    const data = await api.getStockPrice(symbol);
+    if (data.price != null) {
+      const updates: Record<string, unknown> = { price: data.price };
+      if (data.currency) updates.currency = data.currency;
+      await api.updateStock(stockId, updates);
+      onRefresh();
+    }
   }
 
   function handleCashChange(cashId: number, value: string) {
@@ -365,6 +393,7 @@ export default function BrokerGroup({ broker, stocks, brokerCash, forexRates, on
                     <SymbolInput
                       stock={s}
                       onChange={(v) => handleStockChange(s, 'symbol', v)}
+                      onSelect={(sym) => handleSymbolSelect(s.id, sym)}
                     />
                     <NumberInput
                       defaultValue={s.shares}
@@ -429,6 +458,7 @@ export default function BrokerGroup({ broker, stocks, brokerCash, forexRates, on
                     <SymbolInput
                       stock={s}
                       onChange={(value) => handleStockChange(s, 'symbol', value)}
+                      onSelect={(sym) => handleSymbolSelect(s.id, sym)}
                     />
                     <NumberInput
                       defaultValue={s.shares}

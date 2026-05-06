@@ -113,6 +113,10 @@ export const deleteStock = (id: number) =>
 export const refreshStockPrices = () =>
   fetch(`${BASE}/stocks/refresh-prices`, { method: 'POST', headers: authHeaders() }).then(r => json<Stock[]>(r));
 
+export const getStockPrice = (symbol: string) =>
+  fetch(`${BASE}/stocks/price?symbol=${encodeURIComponent(symbol)}`, { headers: authHeaders() })
+    .then(r => json<{ symbol: string; price: number | null; currency: string | null }>(r));
+
 export const getForexRates = () =>
   fetch(`${BASE}/forex`, { headers: authHeaders() }).then(r => json<ForexRates>(r));
 
