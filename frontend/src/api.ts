@@ -170,6 +170,22 @@ export const updateCPF = (data: Partial<CPF>) =>
     body: JSON.stringify(data),
   }).then(r => json<CPF>(r));
 
+export interface CPFLimits {
+  frs: number;
+  bhs: number;
+  year: number;
+  outdated: boolean;
+}
+
+export const getCPFLimits = () =>
+  fetch(`${BASE}/cpf/limits`, { headers: authHeaders() }).then(r => json<CPFLimits>(r));
+
+export const updateCPFLimits = (frs: number, bhs: number) =>
+  fetch(`${BASE}/cpf/limits?frs=${frs}&bhs=${bhs}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+  }).then(r => json<CPFLimits>(r));
+
 // Snapshots
 export const getSnapshots = () =>
   fetch(`${BASE}/snapshots`, { headers: authHeaders() }).then(r => json<Snapshot[]>(r));

@@ -115,6 +115,11 @@ def init_db():
     if "password_hint" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN password_hint TEXT NOT NULL DEFAULT ''")
 
+    # -- Migrate: add is_admin to users if missing --
+    user_cols = _column_names(conn, "users")
+    if "is_admin" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+
     # -- Migrate: add user_id to existing tables if missing --
     for table in ("brokers", "bonds", "cash", "other_assets", "insurance", "liabilities"):
         if "user_id" not in _column_names(conn, table):
@@ -247,6 +252,38 @@ def init_db():
                 "INSERT INTO brokers (id, user_id, name, position, cash, cash_usd, cash_hkd) VALUES (?,?,?,?,?,?,?)",
                 tuple(r),
             )
+
+    # -- Seed admin account if not exists --
+    admin_exists = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+    if not admin_exists:
+        import bcrypt
+        pw_hash = bcrypt.hashpw("Gates".encode(), bcrypt.gensalt()).decode()
+        conn.execute(
+            "INSERT INTO users (username, password_hash, password_hint, is_admin) VALUES (?, ?, ?, 1)",
+            ("admin", pw_hash, "G...s"),
+        )
+    else:
+        conn.execute("UPDATE users SET is_admin=1 WHERE username='admin'")
+
+    # -- CPF Limits (FRS / BHS by year) --
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cpf_limits (
+            year INTEGER PRIMARY KEY,
+            frs REAL NOT NULL,
+            bhs REAL NOT NULL
+        )
+    """)
+    # Seed known values if table is empty
+    existing = conn.execute("SELECT COUNT(*) FROM cpf_limits").fetchone()[0]
+    if existing == 0:
+        conn.executemany(
+            "INSERT INTO cpf_limits (year, frs, bhs) VALUES (?, ?, ?)",
+            [
+                (2024, 205800, 71500),
+                (2025, 213000, 75500),
+                (2026, 220400, 79000),
+            ],
+        )
 
     # -- Indexes --
     conn.executescript("""

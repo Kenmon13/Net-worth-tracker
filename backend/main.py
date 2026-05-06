@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from auth import create_token, get_current_user, hash_password, verify_password
+from auth import create_token, get_current_user, hash_password, require_admin, verify_password
 from database import get_db, init_db
 from models import (
     AuthRequest,
@@ -607,6 +607,121 @@ def update_cpf(body: CPFUpdate, user_id: int = Depends(get_current_user)):
     row = dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone())
     db.close()
     return row
+
+
+def _scrape_cpf_limits() -> dict | None:
+    """Try to scrape current FRS and BHS from CPF website. Returns dict or None."""
+    import re
+    import requests
+
+    results = {}
+
+    # Scrape FRS
+    try:
+        resp = requests.get(
+            "https://www.cpf.gov.sg/service/article/how-much-is-my-full-retirement-sum",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        # Look for FRS amount pattern like "$213,000" or "$220,400"
+        matches = re.findall(r'\$\s?([\d,]+)', resp.text)
+        # FRS is typically the largest amount on the page (Full Retirement Sum > Enhanced > Basic)
+        amounts = [int(m.replace(',', '')) for m in matches if int(m.replace(',', '')) > 100000]
+        if amounts:
+            # The Full Retirement Sum is usually the middle value between BRS and ERS
+            # Sort and pick values that look like retirement sums (100k-500k range)
+            retirement_sums = sorted(set(a for a in amounts if 100000 < a < 500000))
+            if len(retirement_sums) >= 2:
+                results['frs'] = retirement_sums[len(retirement_sums) // 2]
+            elif retirement_sums:
+                results['frs'] = retirement_sums[0]
+    except Exception:
+        pass
+
+    # Scrape BHS
+    try:
+        resp = requests.get(
+            "https://www.cpf.gov.sg/service/article/what-is-the-basic-healthcare-sum",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        matches = re.findall(r'\$\s?([\d,]+)', resp.text)
+        amounts = [int(m.replace(',', '')) for m in matches if int(m.replace(',', '')) > 50000]
+        # BHS is typically in the 50k-120k range
+        bhs_candidates = sorted(set(a for a in amounts if 50000 < a < 150000))
+        if bhs_candidates:
+            results['bhs'] = bhs_candidates[-1]  # Latest/highest BHS
+    except Exception:
+        pass
+
+    return results if ('frs' in results and 'bhs' in results) else None
+
+
+def _validate_scraped_limits(scraped: dict, prev_frs: float, prev_bhs: float) -> bool:
+    """Check scraped values are reasonable — within 20% of previous year."""
+    frs_ok = 0.8 * prev_frs <= scraped['frs'] <= 1.2 * prev_frs
+    bhs_ok = 0.8 * prev_bhs <= scraped['bhs'] <= 1.2 * prev_bhs
+    return frs_ok and bhs_ok
+
+
+@app.get("/api/cpf/limits")
+def get_cpf_limits():
+    """Return FRS and BHS for the current year. Auto-scrapes if missing."""
+    from datetime import date
+
+    current_year = date.today().year
+    db = get_db()
+
+    # Check if current year exists
+    row = db.execute(
+        "SELECT frs, bhs FROM cpf_limits WHERE year=?", (current_year,)
+    ).fetchone()
+
+    if row:
+        db.close()
+        return {"frs": row["frs"], "bhs": row["bhs"], "year": current_year, "outdated": False}
+
+    # Get latest known values as fallback
+    prev = db.execute(
+        "SELECT year, frs, bhs FROM cpf_limits ORDER BY year DESC LIMIT 1"
+    ).fetchone()
+
+    if not prev:
+        db.close()
+        return {"frs": 0, "bhs": 0, "year": current_year, "outdated": True}
+
+    # Try auto-scrape
+    scraped = _scrape_cpf_limits()
+    if scraped and _validate_scraped_limits(scraped, prev["frs"], prev["bhs"]):
+        db.execute(
+            "INSERT OR REPLACE INTO cpf_limits (year, frs, bhs) VALUES (?, ?, ?)",
+            (current_year, scraped["frs"], scraped["bhs"]),
+        )
+        db.commit()
+        db.close()
+        return {"frs": scraped["frs"], "bhs": scraped["bhs"], "year": current_year, "outdated": False}
+
+    # Scrape failed or values look wrong — return previous year with outdated flag
+    db.close()
+    return {"frs": prev["frs"], "bhs": prev["bhs"], "year": prev["year"], "outdated": True}
+
+
+@app.put("/api/cpf/limits")
+def update_cpf_limits(frs: float = Query(gt=0), bhs: float = Query(gt=0), _: int = Depends(require_admin)):
+    """Manually set FRS and BHS for the current year. Admin only."""
+    from datetime import date
+
+    current_year = date.today().year
+    db = get_db()
+    db.execute(
+        "INSERT OR REPLACE INTO cpf_limits (year, frs, bhs) VALUES (?, ?, ?)",
+        (current_year, frs, bhs),
+    )
+    db.commit()
+    db.close()
+    return {"frs": frs, "bhs": bhs, "year": current_year, "outdated": False}
 
 
 # ── Snapshots ────────────────────────────────────────────────────────────────

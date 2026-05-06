@@ -40,3 +40,17 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
+
+
+def require_admin(user_id: int = Depends(get_current_user)) -> int:
+    from database import get_db
+
+    db = get_db()
+    user = db.execute("SELECT is_admin FROM users WHERE id=?", (user_id,)).fetchone()
+    db.close()
+    if not user or not user["is_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return user_id
