@@ -53,7 +53,7 @@ export default function NumberInput({ defaultValue, value, onChange, step = '0.0
     <input
       type={focused ? 'number' : 'text'}
       step={step}
-      className={inputClass}
+      className={`${inputClass} [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]`}
       value={display}
       onFocus={handleFocus}
       onBlur={handleBlur}

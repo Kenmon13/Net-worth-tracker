@@ -197,7 +197,7 @@ export default function TrackerPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
         <SimpleList
           title="Bonds"
           category="bonds"
@@ -212,6 +212,8 @@ export default function TrackerPage() {
           placeholder="e.g. Chase Checking"
           onRefresh={refresh}
         />
+      </div>
+      <div className="mb-6">
         <CurrencyList
           title="Other Assets (Liquid)"
           category="other_liquid"
@@ -224,7 +226,7 @@ export default function TrackerPage() {
 
       {/* Illiquid */}
       <h2 className="text-xl font-bold mb-3 text-slate-300">Illiquid</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
         <CPFSection cpf={portfolio.cpf} onRefresh={refresh} />
         <SimpleList
           title="Insurance"
@@ -233,6 +235,8 @@ export default function TrackerPage() {
           placeholder="e.g. Whole Life, ILP"
           onRefresh={refresh}
         />
+      </div>
+      <div className="mb-6">
         <CurrencyList
           title="Other Assets (Illiquid)"
           category="other"

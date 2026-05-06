@@ -59,7 +59,7 @@ export default function CurrencyList({ title, category, items, placeholder, fore
       {items.map((item) => {
         const sgdVal = toSGD(item.value, item.currency);
         return (
-          <div key={item.id} className="grid grid-cols-[2fr_auto_1fr_auto] gap-2 mb-2.5">
+          <div key={item.id} className="grid grid-cols-[2fr_auto_1.2fr_1fr_auto] gap-2 mb-2.5">
             <input
               className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
               placeholder={placeholder}
@@ -75,14 +75,12 @@ export default function CurrencyList({ title, category, items, placeholder, fore
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
-            <div className="flex items-center gap-2">
-              <NumberInput
-                defaultValue={item.value}
-                onChange={(v) => handleChange(item, 'value', v)}
-              />
-              {item.currency !== 'SGD' && (
-                <span className="text-xs text-slate-500 whitespace-nowrap">= {fmt(sgdVal)}</span>
-              )}
+            <NumberInput
+              defaultValue={item.value}
+              onChange={(v) => handleChange(item, 'value', v)}
+            />
+            <div className="self-center text-sm font-semibold text-green-500 text-right whitespace-nowrap">
+              {item.currency !== 'SGD' ? `= ${fmt(sgdVal)} SGD` : ''}
             </div>
             <button
               onClick={() => handleDelete(item.id)}
