@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import type { Broker, BrokerCash, ForexRates, Stock } from '../types';
 import { currencySymbol, fmt } from '../utils';
 import * as api from '../api';
@@ -42,15 +43,25 @@ const ENDOWUS_FUNDS = [
 function FundNameInput({ defaultValue, onChange }: { defaultValue: string; onChange: (value: string) => void }) {
   const [query, setQuery] = useState(defaultValue);
   const [show, setShow] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
   const filtered = query
     ? ENDOWUS_FUNDS.filter((f) => f.toLowerCase().includes(query.toLowerCase()))
     : ENDOWUS_FUNDS;
 
+  function updateDropdownPos() {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+  }
+
   function handleInput(value: string) {
     setQuery(value);
     onChange(value);
     setShow(true);
+    updateDropdownPos();
   }
 
   function selectFund(name: string) {
@@ -62,15 +73,19 @@ function FundNameInput({ defaultValue, onChange }: { defaultValue: string; onCha
   return (
     <div className="relative">
       <input
+        ref={inputRef}
         className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
         placeholder="e.g. Global Technology Fund"
         value={query}
         onChange={(e) => handleInput(e.target.value)}
-        onFocus={() => setShow(true)}
+        onFocus={() => { updateDropdownPos(); setShow(true); }}
         onBlur={() => setTimeout(() => setShow(false), 150)}
       />
-      {show && filtered.length > 0 && (
-        <div className="absolute z-20 top-full left-0 mt-1 w-full bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg max-h-[200px] overflow-y-auto">
+      {show && filtered.length > 0 && ReactDOM.createPortal(
+        <div
+          className="fixed z-50 bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg max-h-[200px] overflow-y-auto"
+          style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
+        >
           {filtered.map((f) => (
             <button
               key={f}
@@ -83,7 +98,8 @@ function FundNameInput({ defaultValue, onChange }: { defaultValue: string; onCha
               {f}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -94,6 +110,15 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
   const [suggestions, setSuggestions] = useState<SymbolResult[]>([]);
   const [show, setShow] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+
+  function updateDropdownPos() {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+    }
+  }
 
   function handleInput(value: string) {
     setQuery(value);
@@ -104,7 +129,8 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
         const results = await api.searchSymbols(value);
         setSuggestions(results);
         setShow(true);
-      }, 300);
+        updateDropdownPos();
+      }, 150);
     } else {
       setSuggestions([]);
       setShow(false);
@@ -121,15 +147,19 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
   return (
     <div className="relative">
       <input
+        ref={inputRef}
         className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md text-sm w-full focus:outline-none focus:border-indigo-500"
         placeholder="AAPL"
         value={query}
         onChange={(e) => handleInput(e.target.value)}
-        onFocus={() => { if (suggestions.length > 0) setShow(true); }}
+        onFocus={() => { if (suggestions.length > 0) { updateDropdownPos(); setShow(true); } }}
         onBlur={() => setTimeout(() => setShow(false), 150)}
       />
-      {show && suggestions.length > 0 && (
-        <div className="absolute z-20 top-full left-0 mt-1 w-[280px] bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg max-h-[240px] overflow-y-auto">
+      {show && suggestions.length > 0 && ReactDOM.createPortal(
+        <div
+          className="fixed z-50 w-[280px] bg-slate-900 border border-slate-600 rounded-md overflow-hidden shadow-lg max-h-[240px] overflow-y-auto"
+          style={{ top: dropdownPos.top, left: dropdownPos.left }}
+        >
           {suggestions.map((s) => (
             <button
               key={s.symbol}
@@ -146,7 +176,8 @@ function SymbolInput({ stock, onChange }: { stock: Stock; onChange: (value: stri
               <span className="text-slate-500 text-xs shrink-0">{s.exchange}</span>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

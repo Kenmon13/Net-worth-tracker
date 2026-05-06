@@ -339,10 +339,18 @@ def delete_stock(stock_id: int, user_id: int = Depends(get_current_user)):
     db.close()
 
 
-@app.get("/api/stocks/search")
-def search_symbols(q: str = Query(min_length=1)):
-    """Search Yahoo Finance for stock symbols matching the query."""
+_symbol_cache: dict[str, tuple[float, list]] = {}
+_SYMBOL_CACHE_TTL = 300  # 5 minutes
+
+
+def _search_yahoo(q: str) -> list:
     import requests
+
+    now = time.time()
+    key = q.upper().strip()
+    cached = _symbol_cache.get(key)
+    if cached and now - cached[0] < _SYMBOL_CACHE_TTL:
+        return cached[1]
 
     try:
         resp = requests.get(
@@ -353,7 +361,7 @@ def search_symbols(q: str = Query(min_length=1)):
         )
         resp.raise_for_status()
         quotes = resp.json().get("quotes", [])
-        return [
+        results = [
             {
                 "symbol": item["symbol"],
                 "name": item.get("shortname") or item.get("longname") or "",
@@ -364,7 +372,16 @@ def search_symbols(q: str = Query(min_length=1)):
             if item.get("quoteType") in ("EQUITY", "ETF", "MUTUALFUND", "INDEX")
         ]
     except Exception:
-        return []
+        results = []
+
+    _symbol_cache[key] = (now, results)
+    return results
+
+
+@app.get("/api/stocks/search")
+def search_symbols(q: str = Query(min_length=1)):
+    """Search Yahoo Finance for stock symbols matching the query."""
+    return _search_yahoo(q)
 
 
 @app.post("/api/stocks/refresh-prices", response_model=list[StockOut])
