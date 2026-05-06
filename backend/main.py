@@ -65,9 +65,10 @@ def signup(body: AuthRequest):
     if existing:
         db.close()
         raise HTTPException(409, "Username already taken")
+    hint = body.password[0] + "*" * (len(body.password) - 1)
     cur = db.execute(
-        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-        (body.username.strip(), hash_password(body.password)),
+        "INSERT INTO users (username, password_hash, password_hint) VALUES (?, ?, ?)",
+        (body.username.strip(), hash_password(body.password), hint),
     )
     user_id = cur.lastrowid
     # Initialize CPF row for new user
@@ -115,6 +116,19 @@ def login(body: AuthRequest):
     record["count"] = 0
     record["locked_until"] = 0.0
     return TokenOut(access_token=create_token(user["id"]))
+
+
+@app.post("/api/auth/password-hint")
+def password_hint(body: dict):
+    username = (body.get("username") or "").strip()
+    if not username:
+        raise HTTPException(400, "Username is required")
+    db = get_db()
+    user = db.execute("SELECT password_hint FROM users WHERE username=?", (username,)).fetchone()
+    db.close()
+    if not user or not user["password_hint"]:
+        raise HTTPException(404, "No hint available for this username")
+    return {"hint": user["password_hint"]}
 
 
 @app.get("/api/auth/me", response_model=UserOut)

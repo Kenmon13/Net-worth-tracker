@@ -32,6 +32,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE COLLATE NOCASE,
             password_hash TEXT NOT NULL,
+            password_hint TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
@@ -108,6 +109,11 @@ def init_db():
             currency TEXT NOT NULL DEFAULT 'SGD'
         );
     """)
+
+    # -- Migrate: add password_hint to users if missing --
+    user_cols = _column_names(conn, "users")
+    if "password_hint" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN password_hint TEXT NOT NULL DEFAULT ''")
 
     # -- Migrate: add user_id to existing tables if missing --
     for table in ("brokers", "bonds", "cash", "other_assets", "insurance", "liabilities"):

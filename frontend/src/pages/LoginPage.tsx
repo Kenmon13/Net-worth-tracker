@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login, signup } from '../api';
+import { login, signup, getPasswordHint } from '../api';
 import { setToken } from '../auth';
 
 export default function LoginPage() {
@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [hint, setHint] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,6 +26,21 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!username.trim()) {
+      setError('Enter your username first');
+      return;
+    }
+    setError('');
+    setHint('');
+    try {
+      const res = await getPasswordHint(username);
+      setHint(res.hint);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'No hint available');
     }
   };
 
@@ -71,6 +87,24 @@ export default function LoginPage() {
             />
           </div>
 
+          {!isSignup && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                className="text-sm text-indigo-400 hover:text-indigo-300"
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
+
+          {hint && (
+            <div className="bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-sm rounded-lg px-3 py-2">
+              Password hint: <span className="font-mono font-semibold">{hint}</span>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
@@ -83,7 +117,7 @@ export default function LoginPage() {
             {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               type="button"
-              onClick={() => { setIsSignup(!isSignup); setError(''); }}
+              onClick={() => { setIsSignup(!isSignup); setError(''); setHint(''); }}
               className="text-indigo-400 hover:text-indigo-300"
             >
               {isSignup ? 'Sign In' : 'Sign Up'}

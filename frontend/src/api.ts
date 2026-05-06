@@ -39,6 +39,16 @@ export const login = (username: string, password: string) =>
     return r.json() as Promise<{ access_token: string; token_type: string }>;
   });
 
+export const getPasswordHint = (username: string) =>
+  fetch(`${BASE}/auth/password-hint`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username }),
+  }).then(r => {
+    if (!r.ok) return r.json().then(e => { throw new Error(e.detail || 'No hint available'); });
+    return r.json() as Promise<{ hint: string }>;
+  });
+
 export const getMe = () =>
   fetch(`${BASE}/auth/me`, { headers: authHeaders() }).then(r => json<{ id: number; username: string }>(r));
 
