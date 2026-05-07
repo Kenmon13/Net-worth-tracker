@@ -309,7 +309,7 @@ function render() {
     `;
     cpfEl.appendChild(row);
   });
-  const cpfTotal = (data.cpf.oa||0)+(data.cpf.sa||0)+(data.cpf.ma||0);
+  const cpfTotal = (data.cpf.oa||0)+(data.cpf.sa||0)+(data.cpf.ma||0)+(data.cpf.ra||0);
   document.getElementById("sum-cpf").textContent = fmt(cpfTotal);
 
   document.getElementById("sum-stocks").textContent = fmt(stocksTotal);

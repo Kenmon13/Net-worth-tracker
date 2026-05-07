@@ -43,6 +43,7 @@ export interface CPF {
   oa: number;
   sa: number;
   ma: number;
+  ra: number;
 }
 
 export interface Portfolio {

@@ -41,7 +41,7 @@ export default function TrackerPage() {
   const otherTotal = portfolio.other.reduce((t, i) => t + toSGD(i.value, i.currency), 0);
   const insuranceTotal = portfolio.insurance.reduce((t, i) => t + i.value, 0);
   const liabTotal = portfolio.liabilities.reduce((t, i) => t + i.value, 0);
-  const cpfTotal = portfolio.cpf.oa + portfolio.cpf.sa + portfolio.cpf.ma;
+  const cpfTotal = portfolio.cpf.oa + portfolio.cpf.sa + portfolio.cpf.ma + portfolio.cpf.ra;
 
   const existingBrokerNames = portfolio.brokers.map((b) => b.name);
   const availableBrokers = BROKERS_LIST.filter((b) => !existingBrokerNames.includes(b));

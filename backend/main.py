@@ -72,7 +72,7 @@ def signup(body: AuthRequest):
     )
     user_id = cur.lastrowid
     # Initialize CPF row for new user
-    db.execute("INSERT OR IGNORE INTO cpf (user_id, oa, sa, ma) VALUES (?, 0, 0, 0)", (user_id,))
+    db.execute("INSERT OR IGNORE INTO cpf (user_id, oa, sa, ma, ra) VALUES (?, 0, 0, 0, 0)", (user_id,))
     db.commit()
     db.close()
     return TokenOut(access_token=create_token(user_id))
@@ -162,9 +162,9 @@ def get_portfolio(user_id: int = Depends(get_current_user)):
     other_liquid = [dict(r) for r in db.execute("SELECT * FROM other_assets_liquid WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     insurance = [dict(r) for r in db.execute("SELECT * FROM insurance WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     liabilities = [dict(r) for r in db.execute("SELECT * FROM liabilities WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
-    cpf_row = db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone()
+    cpf_row = db.execute("SELECT oa, sa, ma, ra FROM cpf WHERE user_id=?", (user_id,)).fetchone()
     db.close()
-    cpf = CPFOut(**(dict(cpf_row) if cpf_row else {"oa": 0, "sa": 0, "ma": 0}))
+    cpf = CPFOut(**(dict(cpf_row) if cpf_row else {"oa": 0, "sa": 0, "ma": 0, "ra": 0}))
     return PortfolioOut(
         brokers=brokers,
         stocks=stocks,
@@ -602,10 +602,10 @@ _currency_routes("other_assets_liquid", "other_liquid")
 @app.get("/api/cpf", response_model=CPFOut)
 def get_cpf(user_id: int = Depends(get_current_user)):
     db = get_db()
-    row = db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone()
+    row = db.execute("SELECT oa, sa, ma, ra FROM cpf WHERE user_id=?", (user_id,)).fetchone()
     db.close()
     if not row:
-        return CPFOut(oa=0, sa=0, ma=0)
+        return CPFOut(oa=0, sa=0, ma=0, ra=0)
     return CPFOut(**dict(row))
 
 
@@ -614,14 +614,14 @@ def update_cpf(body: CPFUpdate, user_id: int = Depends(get_current_user)):
     db = get_db()
     existing = db.execute("SELECT id FROM cpf WHERE user_id=?", (user_id,)).fetchone()
     if not existing:
-        db.execute("INSERT INTO cpf (user_id, oa, sa, ma) VALUES (?, 0, 0, 0)", (user_id,))
+        db.execute("INSERT INTO cpf (user_id, oa, sa, ma, ra) VALUES (?, 0, 0, 0, 0)", (user_id,))
         db.commit()
     updates = body.model_dump(exclude_none=True)
     if updates:
         sets = ", ".join(f"{k}=?" for k in updates)
         db.execute(f"UPDATE cpf SET {sets} WHERE user_id=?", (*updates.values(), user_id))
         db.commit()
-    row = dict(db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone())
+    row = dict(db.execute("SELECT oa, sa, ma, ra FROM cpf WHERE user_id=?", (user_id,)).fetchone())
     db.close()
     return row
 
@@ -633,7 +633,7 @@ def _scrape_cpf_limits() -> dict | None:
 
     results = {}
 
-    # Scrape FRS
+    # Scrape FRS and ERS
     try:
         resp = requests.get(
             "https://www.cpf.gov.sg/service/article/how-much-is-my-full-retirement-sum",
@@ -646,13 +646,18 @@ def _scrape_cpf_limits() -> dict | None:
         # FRS is typically the largest amount on the page (Full Retirement Sum > Enhanced > Basic)
         amounts = [int(m.replace(',', '')) for m in matches if int(m.replace(',', '')) > 100000]
         if amounts:
-            # The Full Retirement Sum is usually the middle value between BRS and ERS
             # Sort and pick values that look like retirement sums (100k-500k range)
             retirement_sums = sorted(set(a for a in amounts if 100000 < a < 500000))
-            if len(retirement_sums) >= 2:
+            if len(retirement_sums) >= 3:
+                # BRS < FRS < ERS: pick middle for FRS, largest for ERS
                 results['frs'] = retirement_sums[len(retirement_sums) // 2]
+                results['ers'] = retirement_sums[-1]
+            elif len(retirement_sums) >= 2:
+                results['frs'] = retirement_sums[0]
+                results['ers'] = retirement_sums[1]
             elif retirement_sums:
                 results['frs'] = retirement_sums[0]
+                results['ers'] = int(retirement_sums[0] * 2)
     except Exception:
         pass
 
@@ -673,14 +678,15 @@ def _scrape_cpf_limits() -> dict | None:
     except Exception:
         pass
 
-    return results if ('frs' in results and 'bhs' in results) else None
+    return results if ('frs' in results and 'bhs' in results and 'ers' in results) else None
 
 
-def _validate_scraped_limits(scraped: dict, prev_frs: float, prev_bhs: float) -> bool:
+def _validate_scraped_limits(scraped: dict, prev_frs: float, prev_bhs: float, prev_ers: float) -> bool:
     """Check scraped values are reasonable — within 20% of previous year."""
     frs_ok = 0.8 * prev_frs <= scraped['frs'] <= 1.2 * prev_frs
     bhs_ok = 0.8 * prev_bhs <= scraped['bhs'] <= 1.2 * prev_bhs
-    return frs_ok and bhs_ok
+    ers_ok = prev_ers == 0 or (0.8 * prev_ers <= scraped['ers'] <= 1.2 * prev_ers)
+    return frs_ok and bhs_ok and ers_ok
 
 
 @app.get("/api/cpf/limits")
@@ -693,52 +699,52 @@ def get_cpf_limits():
 
     # Check if current year exists
     row = db.execute(
-        "SELECT frs, bhs FROM cpf_limits WHERE year=?", (current_year,)
+        "SELECT frs, bhs, ers FROM cpf_limits WHERE year=?", (current_year,)
     ).fetchone()
 
     if row:
         db.close()
-        return {"frs": row["frs"], "bhs": row["bhs"], "year": current_year, "outdated": False}
+        return {"frs": row["frs"], "bhs": row["bhs"], "ers": row["ers"], "year": current_year, "outdated": False}
 
     # Get latest known values as fallback
     prev = db.execute(
-        "SELECT year, frs, bhs FROM cpf_limits ORDER BY year DESC LIMIT 1"
+        "SELECT year, frs, bhs, ers FROM cpf_limits ORDER BY year DESC LIMIT 1"
     ).fetchone()
 
     if not prev:
         db.close()
-        return {"frs": 0, "bhs": 0, "year": current_year, "outdated": True}
+        return {"frs": 0, "bhs": 0, "ers": 0, "year": current_year, "outdated": True}
 
     # Try auto-scrape
     scraped = _scrape_cpf_limits()
-    if scraped and _validate_scraped_limits(scraped, prev["frs"], prev["bhs"]):
+    if scraped and _validate_scraped_limits(scraped, prev["frs"], prev["bhs"], prev["ers"]):
         db.execute(
-            "INSERT OR REPLACE INTO cpf_limits (year, frs, bhs) VALUES (?, ?, ?)",
-            (current_year, scraped["frs"], scraped["bhs"]),
+            "INSERT OR REPLACE INTO cpf_limits (year, frs, bhs, ers) VALUES (?, ?, ?, ?)",
+            (current_year, scraped["frs"], scraped["bhs"], scraped["ers"]),
         )
         db.commit()
         db.close()
-        return {"frs": scraped["frs"], "bhs": scraped["bhs"], "year": current_year, "outdated": False}
+        return {"frs": scraped["frs"], "bhs": scraped["bhs"], "ers": scraped["ers"], "year": current_year, "outdated": False}
 
     # Scrape failed or values look wrong — return previous year with outdated flag
     db.close()
-    return {"frs": prev["frs"], "bhs": prev["bhs"], "year": prev["year"], "outdated": True}
+    return {"frs": prev["frs"], "bhs": prev["bhs"], "ers": prev["ers"], "year": prev["year"], "outdated": True}
 
 
 @app.put("/api/cpf/limits")
-def update_cpf_limits(frs: float = Query(gt=0), bhs: float = Query(gt=0), _: int = Depends(require_admin)):
-    """Manually set FRS and BHS for the current year. Admin only."""
+def update_cpf_limits(frs: float = Query(gt=0), bhs: float = Query(gt=0), ers: float = Query(gt=0), _: int = Depends(require_admin)):
+    """Manually set FRS, BHS and ERS for the current year. Admin only."""
     from datetime import date
 
     current_year = date.today().year
     db = get_db()
     db.execute(
-        "INSERT OR REPLACE INTO cpf_limits (year, frs, bhs) VALUES (?, ?, ?)",
-        (current_year, frs, bhs),
+        "INSERT OR REPLACE INTO cpf_limits (year, frs, bhs, ers) VALUES (?, ?, ?, ?)",
+        (current_year, frs, bhs, ers),
     )
     db.commit()
     db.close()
-    return {"frs": frs, "bhs": bhs, "year": current_year, "outdated": False}
+    return {"frs": frs, "bhs": bhs, "ers": ers, "year": current_year, "outdated": False}
 
 
 # ── Snapshots ────────────────────────────────────────────────────────────────
@@ -810,8 +816,8 @@ def export_data(user_id: int = Depends(get_current_user)):
     other_liquid = [dict(r) for r in db.execute("SELECT * FROM other_assets_liquid WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     insurance = [dict(r) for r in db.execute("SELECT * FROM insurance WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
     liabilities = [dict(r) for r in db.execute("SELECT * FROM liabilities WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
-    cpf_row = db.execute("SELECT oa, sa, ma FROM cpf WHERE user_id=?", (user_id,)).fetchone()
-    cpf = dict(cpf_row) if cpf_row else {"oa": 0, "sa": 0, "ma": 0}
+    cpf_row = db.execute("SELECT oa, sa, ma, ra FROM cpf WHERE user_id=?", (user_id,)).fetchone()
+    cpf = dict(cpf_row) if cpf_row else {"oa": 0, "sa": 0, "ma": 0, "ra": 0}
     db.close()
 
     wb = Workbook()
@@ -886,7 +892,7 @@ def export_data(user_id: int = Depends(get_current_user)):
         grand_total += sgd_val
 
     # CPF
-    for key, label in [("oa", "Ordinary Account"), ("sa", "Special Account"), ("ma", "Medisave Account")]:
+    for key, label in [("oa", "Ordinary Account"), ("sa", "Special Account"), ("ma", "Medisave Account"), ("ra", "Retirement Account")]:
         ws.append(["CPF", label, cpf[key]])
         grand_total += cpf[key]
 

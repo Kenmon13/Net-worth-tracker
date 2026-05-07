@@ -166,7 +166,8 @@ def init_db():
                 user_id INTEGER NOT NULL UNIQUE,
                 oa REAL NOT NULL DEFAULT 0,
                 sa REAL NOT NULL DEFAULT 0,
-                ma REAL NOT NULL DEFAULT 0
+                ma REAL NOT NULL DEFAULT 0,
+                ra REAL NOT NULL DEFAULT 0
             )
         """)
         if old_cpf:
@@ -181,7 +182,8 @@ def init_db():
                 user_id INTEGER NOT NULL UNIQUE,
                 oa REAL NOT NULL DEFAULT 0,
                 sa REAL NOT NULL DEFAULT 0,
-                ma REAL NOT NULL DEFAULT 0
+                ma REAL NOT NULL DEFAULT 0,
+                ra REAL NOT NULL DEFAULT 0
             )
         """)
 
@@ -265,23 +267,33 @@ def init_db():
     else:
         conn.execute("UPDATE users SET is_admin=1 WHERE username='admin'")
 
-    # -- CPF Limits (FRS / BHS by year) --
+    # -- Migrate: add ra column to cpf if missing --
+    if _table_exists(conn, "cpf") and "ra" not in _column_names(conn, "cpf"):
+        conn.execute("ALTER TABLE cpf ADD COLUMN ra REAL NOT NULL DEFAULT 0")
+
+    # -- CPF Limits (FRS / BHS / ERS by year) --
     conn.execute("""
         CREATE TABLE IF NOT EXISTS cpf_limits (
             year INTEGER PRIMARY KEY,
             frs REAL NOT NULL,
-            bhs REAL NOT NULL
+            bhs REAL NOT NULL,
+            ers REAL NOT NULL DEFAULT 0
         )
     """)
+    # Migrate: add ers column if missing
+    if _table_exists(conn, "cpf_limits") and "ers" not in _column_names(conn, "cpf_limits"):
+        conn.execute("ALTER TABLE cpf_limits ADD COLUMN ers REAL NOT NULL DEFAULT 0")
+        # Backfill ERS = 2 * FRS for existing rows
+        conn.execute("UPDATE cpf_limits SET ers = CAST(frs * 2 AS INTEGER) WHERE ers = 0")
     # Seed known values if table is empty
     existing = conn.execute("SELECT COUNT(*) FROM cpf_limits").fetchone()[0]
     if existing == 0:
         conn.executemany(
-            "INSERT INTO cpf_limits (year, frs, bhs) VALUES (?, ?, ?)",
+            "INSERT INTO cpf_limits (year, frs, bhs, ers) VALUES (?, ?, ?, ?)",
             [
-                (2024, 205800, 71500),
-                (2025, 213000, 75500),
-                (2026, 220400, 79000),
+                (2024, 205800, 71500, 308700),
+                (2025, 213000, 75500, 426000),
+                (2026, 220400, 79000, 440800),
             ],
         )
 

@@ -30,7 +30,7 @@ export default function HistoryPage() {
     const stocksTotal = portfolio.stocks.reduce((t, s) => t + toSGD(s.shares * s.price, s.currency), 0) + brokerCashTotal;
     const bondsTotal = portfolio.bonds.reduce((t, i) => t + i.value, 0);
     const cashTotal = portfolio.cash.reduce((t, i) => t + i.value, 0);
-    const cpfTotal = portfolio.cpf.oa + portfolio.cpf.sa + portfolio.cpf.ma;
+    const cpfTotal = portfolio.cpf.oa + portfolio.cpf.sa + portfolio.cpf.ma + portfolio.cpf.ra;
     const insuranceTotal = portfolio.insurance.reduce((t, i) => t + i.value, 0);
     const otherTotal = portfolio.other.reduce((t, i) => t + i.value, 0) + insuranceTotal;
     const liabTotal = portfolio.liabilities.reduce((t, i) => t + i.value, 0);

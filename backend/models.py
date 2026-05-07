@@ -102,12 +102,14 @@ class CPFUpdate(BaseModel):
     oa: float | None = None
     sa: float | None = None
     ma: float | None = None
+    ra: float | None = None
 
 
 class CPFOut(BaseModel):
     oa: float
     sa: float
     ma: float
+    ra: float
 
 
 class SnapshotCreate(BaseModel):

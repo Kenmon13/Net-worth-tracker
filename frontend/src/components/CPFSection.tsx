@@ -14,6 +14,7 @@ const ACCOUNTS: { key: keyof CPF; label: string }[] = [
   { key: 'oa', label: 'Ordinary' },
   { key: 'sa', label: 'Special' },
   { key: 'ma', label: 'Medisave' },
+  { key: 'ra', label: 'Retirement' },
 ];
 
 export default function CPFSection({ cpf, onRefresh }: Props) {
@@ -22,14 +23,16 @@ export default function CPFSection({ cpf, onRefresh }: Props) {
   const [showUpdate, setShowUpdate] = useState(false);
   const [frsInput, setFrsInput] = useState('');
   const [bhsInput, setBhsInput] = useState('');
+  const [ersInput, setErsInput] = useState('');
   const [updateError, setUpdateError] = useState('');
-  const total = cpf.oa + cpf.sa + cpf.ma;
+  const total = cpf.oa + cpf.sa + cpf.ma + cpf.ra;
 
   useEffect(() => {
     api.getCPFLimits().then((data) => {
       setLimits(data);
       setFrsInput(String(data.frs));
       setBhsInput(String(data.bhs));
+      setErsInput(String(data.ers));
     });
   }, []);
 
@@ -44,10 +47,11 @@ export default function CPFSection({ cpf, onRefresh }: Props) {
   async function handleUpdateLimits() {
     const frs = parseFloat(frsInput);
     const bhs = parseFloat(bhsInput);
-    if (!frs || !bhs || frs <= 0 || bhs <= 0) return;
+    const ers = parseFloat(ersInput);
+    if (!frs || !bhs || !ers || frs <= 0 || bhs <= 0 || ers <= 0) return;
     setUpdateError('');
     try {
-      const updated = await api.updateCPFLimits(frs, bhs);
+      const updated = await api.updateCPFLimits(frs, bhs, ers);
       setLimits(updated);
       setShowUpdate(false);
     } catch {
@@ -57,11 +61,14 @@ export default function CPFSection({ cpf, onRefresh }: Props) {
 
   function getWarning(key: keyof CPF): string | null {
     if (!limits) return null;
-    if (key === 'sa' && cpf.sa >= limits.frs) {
-      return `Reached Full Retirement Sum (FRS ${fmt(limits.frs)} for ${limits.year})`;
+    if (key === 'sa' && cpf.sa >= limits.ers) {
+      return `Reached Enhanced Retirement Sum (ERS ${fmt(limits.ers)} for ${limits.year})`;
     }
     if (key === 'ma' && cpf.ma >= limits.bhs) {
       return `Reached Basic Healthcare Sum (BHS ${fmt(limits.bhs)} for ${limits.year})`;
+    }
+    if (key === 'ra' && cpf.ra >= limits.ers) {
+      return `Reached Enhanced Retirement Sum (ERS ${fmt(limits.ers)} for ${limits.year})`;
     }
     return null;
   }
@@ -124,6 +131,15 @@ export default function CPFSection({ cpf, onRefresh }: Props) {
                   type="number"
                   value={bhsInput}
                   onChange={(e) => setBhsInput(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-slate-400 w-[40px]">ERS</label>
+                <input
+                  className="bg-slate-950 border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md text-sm w-[140px] focus:outline-none focus:border-indigo-500"
+                  type="number"
+                  value={ersInput}
+                  onChange={(e) => setErsInput(e.target.value)}
                 />
               </div>
               {updateError && (
