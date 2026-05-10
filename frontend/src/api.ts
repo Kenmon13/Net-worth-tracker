@@ -63,6 +63,9 @@ export interface AdminUser {
 export const getAdminUsers = () =>
   fetch(`${BASE}/admin/users`, { headers: authHeaders() }).then(r => json<AdminUser[]>(r));
 
+export const deleteAdminUser = (userId: number) =>
+  fetch(`${BASE}/admin/users/${userId}`, { method: 'DELETE', headers: authHeaders() }).then(r => json<{ deleted: number }>(r));
+
 // Portfolio
 export const getPortfolio = () =>
   fetch(`${BASE}/portfolio`, { headers: authHeaders() }).then(r => json<Portfolio>(r));

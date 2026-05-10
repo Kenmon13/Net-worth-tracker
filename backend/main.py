@@ -163,6 +163,31 @@ def list_users(_: int = Depends(require_admin)):
     return users
 
 
+@app.delete("/api/admin/users/{user_id}")
+def delete_user(user_id: int, admin_id: int = Depends(require_admin)):
+    if user_id == admin_id:
+        raise HTTPException(400, "Cannot delete yourself")
+    db = get_db()
+    user = db.execute("SELECT id, is_admin FROM users WHERE id=?", (user_id,)).fetchone()
+    if not user:
+        db.close()
+        raise HTTPException(404, "User not found")
+    if user["is_admin"]:
+        db.close()
+        raise HTTPException(400, "Cannot delete an admin user")
+    # Delete all user data
+    for table in ["stocks", "broker_cash"]:
+        db.execute(f"DELETE FROM {table} WHERE broker_id IN (SELECT id FROM brokers WHERE user_id=?)", (user_id,))
+    for table in ["position_sells", "position_buys"]:
+        db.execute(f"DELETE FROM {table} WHERE position_id IN (SELECT id FROM stock_positions WHERE user_id=?)", (user_id,))
+    for table in ["brokers", "stock_positions", "bonds", "cash", "other_assets", "other_assets_liquid", "insurance", "liabilities", "cpf", "snapshots"]:
+        db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
+    db.execute("DELETE FROM users WHERE id=?", (user_id,))
+    db.commit()
+    db.close()
+    return {"deleted": user_id}
+
+
 # ── Portfolio (read-only aggregate) ──────────────────────────────────────────
 
 
