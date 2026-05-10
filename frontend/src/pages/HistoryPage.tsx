@@ -364,9 +364,9 @@ export default function HistoryPage() {
                     return [(v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v)).toLocaleString('en-US'), 'Amount'];
                   }}
                 />
-                <Bar dataKey="value">
+                <Bar dataKey="value" radius={[4, 4, 4, 4]}>
                   {breakdownBarData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} radius={entry.value >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4]} />
+                    <Cell key={i} fill={entry.color} />
                   ))}
                 </Bar>
               </BarChart>
@@ -469,8 +469,8 @@ export default function HistoryPage() {
               <Tooltip
                 contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }}
                 formatter={(value: unknown, name: unknown) => {
-                  const line = CHART_LINES.find((l) => l.key === name);
-                  return ['$' + Math.round(Number(value)).toLocaleString('en-US'), line?.label ?? name];
+                  const line = CHART_LINES.find((l) => l.key === String(name));
+                  return ['$' + Math.round(Number(value)).toLocaleString('en-US'), line?.label ?? String(name)] as [string, string];
                 }}
                 labelFormatter={(label: unknown) => `Date: ${label}`}
               />
