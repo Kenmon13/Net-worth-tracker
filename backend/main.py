@@ -760,15 +760,16 @@ def list_snapshots(user_id: int = Depends(get_current_user)):
 
 @app.post("/api/snapshots", response_model=SnapshotOut, status_code=201)
 def create_snapshot(body: SnapshotCreate, user_id: int = Depends(get_current_user)):
-    total = body.stocks + body.bonds + body.cash + body.cpf + body.other - body.liab
+    total = body.stocks + body.bonds + body.cash + body.other_liquid + body.cpf + body.insurance + body.other - body.liab
     db = get_db()
     db.execute(
-        """INSERT INTO snapshots (user_id, date, stocks, bonds, cash, cpf, other, liab, total)
-           VALUES (?,?,?,?,?,?,?,?,?)
+        """INSERT INTO snapshots (user_id, date, stocks, bonds, cash, other_liquid, cpf, insurance, other, liab, total)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(user_id, date) DO UPDATE SET
              stocks=excluded.stocks, bonds=excluded.bonds, cash=excluded.cash,
-             cpf=excluded.cpf, other=excluded.other, liab=excluded.liab, total=excluded.total""",
-        (user_id, body.date, body.stocks, body.bonds, body.cash, body.cpf, body.other, body.liab, total),
+             other_liquid=excluded.other_liquid, cpf=excluded.cpf, insurance=excluded.insurance,
+             other=excluded.other, liab=excluded.liab, total=excluded.total""",
+        (user_id, body.date, body.stocks, body.bonds, body.cash, body.other_liquid, body.cpf, body.insurance, body.other, body.liab, total),
     )
     db.commit()
     row = dict(db.execute("SELECT * FROM snapshots WHERE user_id=? AND date=?", (user_id, body.date)).fetchone())

@@ -197,7 +197,9 @@ def init_db():
                 stocks REAL NOT NULL DEFAULT 0,
                 bonds REAL NOT NULL DEFAULT 0,
                 cash REAL NOT NULL DEFAULT 0,
+                other_liquid REAL NOT NULL DEFAULT 0,
                 cpf REAL NOT NULL DEFAULT 0,
+                insurance REAL NOT NULL DEFAULT 0,
                 other REAL NOT NULL DEFAULT 0,
                 liab REAL NOT NULL DEFAULT 0,
                 total REAL NOT NULL DEFAULT 0,
@@ -218,7 +220,9 @@ def init_db():
                     stocks REAL NOT NULL DEFAULT 0,
                     bonds REAL NOT NULL DEFAULT 0,
                     cash REAL NOT NULL DEFAULT 0,
+                    other_liquid REAL NOT NULL DEFAULT 0,
                     cpf REAL NOT NULL DEFAULT 0,
+                    insurance REAL NOT NULL DEFAULT 0,
                     other REAL NOT NULL DEFAULT 0,
                     liab REAL NOT NULL DEFAULT 0,
                     total REAL NOT NULL DEFAULT 0,
@@ -230,6 +234,11 @@ def init_db():
                     "INSERT INTO snapshots (user_id, date, stocks, bonds, cash, cpf, other, liab, total) VALUES (1,?,?,?,?,?,?,?,?)",
                     tuple(r),
                 )
+        # Add other_liquid and insurance columns if missing
+        if "other_liquid" not in snap_cols:
+            conn.execute("ALTER TABLE snapshots ADD COLUMN other_liquid REAL NOT NULL DEFAULT 0")
+        if "insurance" not in snap_cols:
+            conn.execute("ALTER TABLE snapshots ADD COLUMN insurance REAL NOT NULL DEFAULT 0")
 
     # -- Migrate: remove UNIQUE constraint on brokers.name (now per-user) --
     broker_sql = conn.execute(

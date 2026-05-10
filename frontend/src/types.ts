@@ -65,7 +65,9 @@ export interface Snapshot {
   stocks: number;
   bonds: number;
   cash: number;
+  other_liquid: number;
   cpf: number;
+  insurance: number;
   other: number;
   liab: number;
   total: number;

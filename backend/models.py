@@ -117,7 +117,9 @@ class SnapshotCreate(BaseModel):
     stocks: float = 0
     bonds: float = 0
     cash: float = 0
+    other_liquid: float = 0
     cpf: float = 0
+    insurance: float = 0
     other: float = 0
     liab: float = 0
 
@@ -128,7 +130,9 @@ class SnapshotOut(BaseModel):
     stocks: float
     bonds: float
     cash: float
+    other_liquid: float
     cpf: float
+    insurance: float
     other: float
     liab: float
     total: float

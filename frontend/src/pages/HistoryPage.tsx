@@ -10,7 +10,7 @@ import NumberInput from '../components/NumberInput';
 
 export default function HistoryPage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [form, setForm] = useState({ stocks: 0, bonds: 0, cash: 0, cpf: 0, other: 0, liab: 0 });
+  const [form, setForm] = useState({ stocks: 0, bonds: 0, cash: 0, other_liquid: 0, cpf: 0, insurance: 0, other: 0, liab: 0 });
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [pieView, setPieView] = useState<'total' | 'liquid'>('total');
 
@@ -21,7 +21,7 @@ export default function HistoryPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const previewTotal = form.stocks + form.bonds + form.cash + form.cpf + form.other - form.liab;
+  const previewTotal = form.stocks + form.bonds + form.cash + form.other_liquid + form.cpf + form.insurance + form.other - form.liab;
 
   async function loadFromTracker() {
     const [portfolio, forexRates] = await Promise.all([api.getPortfolio(), api.getForexRates()]);
@@ -30,15 +30,18 @@ export default function HistoryPage() {
     const stocksTotal = portfolio.stocks.reduce((t, s) => t + toSGD(s.shares * s.price, s.currency), 0) + brokerCashTotal;
     const bondsTotal = portfolio.bonds.reduce((t, i) => t + i.value, 0);
     const cashTotal = portfolio.cash.reduce((t, i) => t + i.value, 0);
+    const otherLiquidTotal = portfolio.other_liquid.reduce((t, i) => t + toSGD(i.value, i.currency), 0);
     const cpfTotal = portfolio.cpf.oa + portfolio.cpf.sa + portfolio.cpf.ma + portfolio.cpf.ra;
     const insuranceTotal = portfolio.insurance.reduce((t, i) => t + i.value, 0);
-    const otherTotal = portfolio.other.reduce((t, i) => t + i.value, 0) + insuranceTotal;
+    const otherTotal = portfolio.other.reduce((t, i) => t + toSGD(i.value, i.currency), 0);
     const liabTotal = portfolio.liabilities.reduce((t, i) => t + i.value, 0);
     setForm({
       stocks: parseFloat(stocksTotal.toFixed(2)),
       bonds: parseFloat(bondsTotal.toFixed(2)),
       cash: parseFloat(cashTotal.toFixed(2)),
+      other_liquid: parseFloat(otherLiquidTotal.toFixed(2)),
       cpf: parseFloat(cpfTotal.toFixed(2)),
+      insurance: parseFloat(insuranceTotal.toFixed(2)),
       other: parseFloat(otherTotal.toFixed(2)),
       liab: parseFloat(liabTotal.toFixed(2)),
     });
@@ -79,19 +82,27 @@ export default function HistoryPage() {
   const sign = (v: number) => (v >= 0 ? '+' : '');
   const cls = (v: number) => (v >= 0 ? 'text-green-500' : 'text-red-500');
 
-  const CATEGORIES = [
+  const LIQUID_CATEGORIES = [
     { key: 'stocks', label: 'Stocks', color: '#6366f1' },
     { key: 'bonds', label: 'Bonds', color: '#22d3ee' },
     { key: 'cash', label: 'Cash', color: '#22c55e' },
-    { key: 'cpf', label: 'CPF', color: '#f59e0b' },
-    { key: 'other', label: 'Other', color: '#a78bfa' },
-    { key: 'liab', label: 'Liabilities', color: '#ef4444' },
+    { key: 'other_liquid', label: 'Other Liquid', color: '#34d399' },
   ] as const;
 
-  const LIQUID_KEYS = new Set(['stocks', 'bonds', 'cash']);
+  const ILLIQUID_CATEGORIES = [
+    { key: 'cpf', label: 'CPF', color: '#f59e0b' },
+    { key: 'insurance', label: 'Insurance', color: '#fb923c' },
+    { key: 'other', label: 'Other Illiquid', color: '#a78bfa' },
+  ] as const;
+
+  const ALL_CATEGORIES = [
+    ...LIQUID_CATEGORIES,
+    ...ILLIQUID_CATEGORIES,
+    { key: 'liab' as const, label: 'Liabilities', color: '#ef4444' },
+  ];
 
   const breakdownData = latest
-    ? CATEGORIES.filter((c) => c.key !== 'liab').map((c) => ({
+    ? ALL_CATEGORIES.filter((c) => c.key !== 'liab').map((c) => ({
         name: c.label,
         value: latest[c.key],
         color: c.color,
@@ -99,7 +110,7 @@ export default function HistoryPage() {
     : [];
 
   const liquidBreakdownData = latest
-    ? CATEGORIES.filter((c) => LIQUID_KEYS.has(c.key)).map((c) => ({
+    ? LIQUID_CATEGORIES.map((c) => ({
         name: c.label,
         value: latest[c.key],
         color: c.color,
@@ -109,12 +120,15 @@ export default function HistoryPage() {
   const activePieData = pieView === 'liquid' ? liquidBreakdownData : breakdownData;
 
   const breakdownBarData = latest
-    ? CATEGORIES.map((c) => ({
+    ? ALL_CATEGORIES.map((c) => ({
         name: c.label,
         value: c.key === 'liab' ? -latest[c.key] : latest[c.key],
         color: c.color,
       })).filter((d) => d.value !== 0)
     : [];
+
+  const liquidTotal = latest ? LIQUID_CATEGORIES.reduce((t, c) => t + latest[c.key], 0) : 0;
+  const illiquidTotal = latest ? ILLIQUID_CATEGORIES.reduce((t, c) => t + latest[c.key], 0) : 0;
 
   const reversed = [...snapshots].reverse();
 
@@ -146,17 +160,48 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-          {(['stocks', 'bonds', 'cash', 'cpf', 'other', 'liab'] as const).map((key) => (
-            <div key={key} className="flex flex-col gap-1">
-              <label className="text-xs text-slate-300 uppercase">{key === 'liab' ? 'Liabilities' : key}</label>
+        <div className="mb-2">
+          <div className="text-xs text-green-400 uppercase font-semibold mb-1">Liquid</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {([['stocks', 'Stocks'], ['bonds', 'Bonds'], ['cash', 'Cash'], ['other_liquid', 'Other Liquid']] as const).map(([key, label]) => (
+              <div key={key} className="flex flex-col gap-1">
+                <label className="text-xs text-slate-300 uppercase">{label}</label>
+                <NumberInput
+                  value={form[key]}
+                  onChange={(v) => setForm({ ...form, [key]: parseFloat(v) || 0 })}
+                  className="bg-black/30 border border-white/20 text-slate-200 px-3.5 py-2.5 rounded-md text-sm w-full focus:outline-none focus:border-indigo-300"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="mb-2">
+          <div className="text-xs text-amber-400 uppercase font-semibold mb-1">Illiquid</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {([['cpf', 'CPF'], ['insurance', 'Insurance'], ['other', 'Other Illiquid']] as const).map(([key, label]) => (
+              <div key={key} className="flex flex-col gap-1">
+                <label className="text-xs text-slate-300 uppercase">{label}</label>
+                <NumberInput
+                  value={form[key]}
+                  onChange={(v) => setForm({ ...form, [key]: parseFloat(v) || 0 })}
+                  className="bg-black/30 border border-white/20 text-slate-200 px-3.5 py-2.5 rounded-md text-sm w-full focus:outline-none focus:border-indigo-300"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-red-400 uppercase font-semibold mb-1">Liabilities</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-slate-300 uppercase">Liabilities</label>
               <NumberInput
-                value={form[key]}
-                onChange={(v) => setForm({ ...form, [key]: parseFloat(v) || 0 })}
+                value={form.liab}
+                onChange={(v) => setForm({ ...form, liab: parseFloat(v) || 0 })}
                 className="bg-black/30 border border-white/20 text-slate-200 px-3.5 py-2.5 rounded-md text-sm w-full focus:outline-none focus:border-indigo-300"
               />
             </div>
-          ))}
+          </div>
         </div>
       </div>
 
@@ -192,26 +237,65 @@ export default function HistoryPage() {
       {latest && (
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-5">
           <h2 className="text-lg font-semibold mb-4">Net Worth Breakdown — {latest.date}</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-2">
-            {CATEGORIES.map((c) => {
+
+          {/* Liquid */}
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-green-400 uppercase font-semibold">Liquid</span>
+            <span className="text-sm font-bold text-green-400">{fmt(liquidTotal)}</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {LIQUID_CATEGORIES.map((c) => {
               const val = latest[c.key];
-              const pct = latest.total !== 0 && c.key !== 'liab'
-                ? ((val / (latest.total + latest.liab)) * 100).toFixed(1)
-                : null;
+              const grossAssets = latest.total + latest.liab;
+              const pct = grossAssets !== 0 ? ((val / grossAssets) * 100).toFixed(1) : null;
               return (
                 <div key={c.key} className="bg-slate-900 border border-slate-700 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.color }} />
                     <span className="text-xs text-slate-400 uppercase">{c.label}</span>
                   </div>
-                  <div className={`text-lg font-bold ${c.key === 'liab' ? 'text-red-500' : ''}`}>
-                    {c.key === 'liab' && val > 0 ? '-' : ''}{fmt(val)}
-                  </div>
+                  <div className="text-lg font-bold">{fmt(val)}</div>
                   {pct && <div className="text-xs text-slate-400">{pct}% of assets</div>}
                 </div>
               );
             })}
           </div>
+
+          {/* Illiquid */}
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-amber-400 uppercase font-semibold">Illiquid</span>
+            <span className="text-sm font-bold text-amber-400">{fmt(illiquidTotal)}</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {ILLIQUID_CATEGORIES.map((c) => {
+              const val = latest[c.key];
+              const grossAssets = latest.total + latest.liab;
+              const pct = grossAssets !== 0 ? ((val / grossAssets) * 100).toFixed(1) : null;
+              return (
+                <div key={c.key} className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.color }} />
+                    <span className="text-xs text-slate-400 uppercase">{c.label}</span>
+                  </div>
+                  <div className="text-lg font-bold">{fmt(val)}</div>
+                  {pct && <div className="text-xs text-slate-400">{pct}% of assets</div>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Liabilities */}
+          {latest.liab > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ef4444' }} />
+                  <span className="text-xs text-slate-400 uppercase">Liabilities</span>
+                </div>
+                <div className="text-lg font-bold text-red-500">-{fmt(latest.liab)}</div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -353,10 +437,20 @@ export default function HistoryPage() {
             <table className="w-full border-collapse text-[13px] whitespace-nowrap">
               <thead>
                 <tr>
-                  {['Date', 'Stocks', 'Bonds', 'Cash', 'CPF', 'Other', 'Liabilities', 'Net Worth', 'Change', ''].map((h) => (
-                    <th key={h} className={`py-2.5 px-2.5 border-b-2 border-slate-700 text-slate-400 text-[11px] uppercase ${h === 'Date' ? 'text-left' : 'text-right'}`}>
-                      {h}
-                    </th>
+                  <th rowSpan={2} className="py-2.5 px-2.5 border-b-2 border-slate-700 text-slate-400 text-[11px] uppercase text-left align-bottom">Date</th>
+                  <th colSpan={4} className="py-1 px-2.5 border-b border-slate-600 text-green-400 text-[10px] uppercase text-center">Liquid</th>
+                  <th colSpan={3} className="py-1 px-2.5 border-b border-slate-600 text-amber-400 text-[10px] uppercase text-center">Illiquid</th>
+                  <th rowSpan={2} className="py-2.5 px-2.5 border-b-2 border-slate-700 text-slate-400 text-[11px] uppercase text-right align-bottom">Liabilities</th>
+                  <th rowSpan={2} className="py-2.5 px-2.5 border-b-2 border-slate-700 text-slate-400 text-[11px] uppercase text-right align-bottom">Net Worth</th>
+                  <th rowSpan={2} className="py-2.5 px-2.5 border-b-2 border-slate-700 text-slate-400 text-[11px] uppercase text-right align-bottom">Change</th>
+                  <th rowSpan={2} className="py-2.5 px-2.5 border-b-2 border-slate-700 align-bottom"></th>
+                </tr>
+                <tr>
+                  {['Stocks', 'Bonds', 'Cash', 'Other'].map((h) => (
+                    <th key={h} className="py-1 px-2.5 border-b-2 border-slate-700 text-slate-400 text-[11px] uppercase text-right">{h}</th>
+                  ))}
+                  {['CPF', 'Insurance', 'Other'].map((h) => (
+                    <th key={`il-${h}`} className="py-1 px-2.5 border-b-2 border-slate-700 text-slate-400 text-[11px] uppercase text-right">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -384,7 +478,9 @@ export default function HistoryPage() {
                       <td className="py-2.5 px-2.5 border-b border-slate-800 text-right">{fmt(snap.stocks)}</td>
                       <td className="py-2.5 px-2.5 border-b border-slate-800 text-right">{fmt(snap.bonds)}</td>
                       <td className="py-2.5 px-2.5 border-b border-slate-800 text-right">{fmt(snap.cash)}</td>
+                      <td className="py-2.5 px-2.5 border-b border-slate-800 text-right">{fmt(snap.other_liquid)}</td>
                       <td className="py-2.5 px-2.5 border-b border-slate-800 text-right">{fmt(snap.cpf)}</td>
+                      <td className="py-2.5 px-2.5 border-b border-slate-800 text-right">{fmt(snap.insurance)}</td>
                       <td className="py-2.5 px-2.5 border-b border-slate-800 text-right">{fmt(snap.other)}</td>
                       <td className="py-2.5 px-2.5 border-b border-slate-800 text-right text-red-500">{snap.liab ? `-${fmt(snap.liab)}` : fmt(0)}</td>
                       <td className="py-2.5 px-2.5 border-b border-slate-800 text-right font-bold">{fmt(snap.total)}</td>
