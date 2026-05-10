@@ -59,10 +59,27 @@ export interface Portfolio {
   cpf: CPF;
 }
 
+export interface PositionSell {
+  id: number;
+  position_id: number;
+  shares: number;
+  price: number;
+  date: string;
+}
+
+export interface PositionBuy {
+  id: number;
+  position_id: number;
+  shares: number;
+  price: number;
+  date: string;
+}
+
 export interface Position {
   id: number;
   broker_name: string;
   symbol: string;
+  name: string;
   shares: number;
   buy_price: number;
   buy_date: string;
@@ -71,6 +88,8 @@ export interface Position {
   currency: string;
   current_price: number;
   total_dividends: number;
+  sells: PositionSell[];
+  buys: PositionBuy[];
 }
 
 export interface Snapshot {

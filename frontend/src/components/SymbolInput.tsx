@@ -22,7 +22,7 @@ function searchLocal(q: string): SymbolResult[] {
 interface Props {
   defaultSymbol: string;
   onChange: (value: string) => void;
-  onSelect?: (symbol: string) => void;
+  onSelect?: (symbol: string, name?: string) => void;
   className?: string;
 }
 
@@ -67,12 +67,12 @@ export default function SymbolInput({ defaultSymbol, onChange, onSelect, classNa
     }
   }
 
-  function selectSymbol(symbol: string) {
+  function selectSymbol(symbol: string, name?: string) {
     setQuery(symbol);
     onChange(symbol);
     setShow(false);
     setSuggestions([]);
-    onSelect?.(symbol);
+    onSelect?.(symbol, name);
   }
 
   return (
@@ -95,7 +95,7 @@ export default function SymbolInput({ defaultSymbol, onChange, onSelect, classNa
             setHighlightedIndex((i) => (i > 0 ? i - 1 : suggestions.length - 1));
           } else if (e.key === 'Enter' && highlightedIndex >= 0) {
             e.preventDefault();
-            selectSymbol(suggestions[highlightedIndex].symbol);
+            selectSymbol(suggestions[highlightedIndex].symbol, suggestions[highlightedIndex].name);
           } else if (e.key === 'Escape') {
             setShow(false);
           }
@@ -112,7 +112,7 @@ export default function SymbolInput({ defaultSymbol, onChange, onSelect, classNa
               className={`w-full text-left px-2.5 py-2 text-sm hover:bg-slate-700 cursor-pointer flex justify-between items-center gap-2 ${i === highlightedIndex ? 'bg-slate-700' : ''}`}
               onMouseDown={(e) => {
                 e.preventDefault();
-                selectSymbol(s.symbol);
+                selectSymbol(s.symbol, s.name);
               }}
             >
               <div>

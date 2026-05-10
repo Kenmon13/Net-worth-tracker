@@ -333,6 +333,30 @@ def init_db():
             conn.execute("ALTER TABLE stock_positions ADD COLUMN sell_price REAL NOT NULL DEFAULT 0")
         if "sell_date" not in pos_cols:
             conn.execute("ALTER TABLE stock_positions ADD COLUMN sell_date TEXT NOT NULL DEFAULT ''")
+        if "name" not in pos_cols:
+            conn.execute("ALTER TABLE stock_positions ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+
+    # -- Position Sells (partial sells per position) --
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS position_sells (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER NOT NULL REFERENCES stock_positions(id) ON DELETE CASCADE,
+            shares REAL NOT NULL DEFAULT 0,
+            price REAL NOT NULL DEFAULT 0,
+            date TEXT NOT NULL DEFAULT ''
+        )
+    """)
+
+    # -- Position Buys (additional buys per position) --
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS position_buys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER NOT NULL REFERENCES stock_positions(id) ON DELETE CASCADE,
+            shares REAL NOT NULL DEFAULT 0,
+            price REAL NOT NULL DEFAULT 0,
+            date TEXT NOT NULL DEFAULT ''
+        )
+    """)
 
     # -- Indexes --
     conn.executescript("""

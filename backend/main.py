@@ -27,6 +27,12 @@ from models import (
     PositionCreate,
     PositionOut,
     PositionUpdate,
+    BuyCreate,
+    BuyOut,
+    BuyUpdate,
+    SellCreate,
+    SellOut,
+    SellUpdate,
     SimpleItemCreate,
     SimpleItemOut,
     SimpleItemUpdate,
@@ -757,6 +763,24 @@ def update_cpf_limits(frs: float = Query(gt=0), bhs: float = Query(gt=0), ers: f
 def list_positions(user_id: int = Depends(get_current_user)):
     db = get_db()
     rows = [dict(r) for r in db.execute("SELECT * FROM stock_positions WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    pos_ids = [r["id"] for r in rows]
+    sells_map: dict[int, list] = {pid: [] for pid in pos_ids}
+    buys_map: dict[int, list] = {pid: [] for pid in pos_ids}
+    if pos_ids:
+        placeholders = ",".join("?" * len(pos_ids))
+        sells = [dict(r) for r in db.execute(
+            f"SELECT * FROM position_sells WHERE position_id IN ({placeholders}) ORDER BY date, id", pos_ids
+        ).fetchall()]
+        for s in sells:
+            sells_map[s["position_id"]].append(s)
+        buys = [dict(r) for r in db.execute(
+            f"SELECT * FROM position_buys WHERE position_id IN ({placeholders}) ORDER BY date, id", pos_ids
+        ).fetchall()]
+        for b in buys:
+            buys_map[b["position_id"]].append(b)
+    for row in rows:
+        row["sells"] = sells_map.get(row["id"], [])
+        row["buys"] = buys_map.get(row["id"], [])
     db.close()
     return rows
 
@@ -803,9 +827,113 @@ def delete_position(pos_id: int, user_id: int = Depends(get_current_user)):
     db.close()
 
 
+@app.post("/api/positions/sells", response_model=SellOut, status_code=201)
+def create_sell(body: SellCreate, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    pos = db.execute("SELECT id FROM stock_positions WHERE id=? AND user_id=?", (body.position_id, user_id)).fetchone()
+    if not pos:
+        db.close()
+        raise HTTPException(404, "Position not found")
+    cur = db.execute(
+        "INSERT INTO position_sells (position_id, shares, price, date) VALUES (?,?,?,?)",
+        (body.position_id, body.shares, body.price, body.date),
+    )
+    db.commit()
+    row = dict(db.execute("SELECT * FROM position_sells WHERE id=?", (cur.lastrowid,)).fetchone())
+    db.close()
+    return row
+
+
+@app.patch("/api/positions/sells/{sell_id}", response_model=SellOut)
+def update_sell(sell_id: int, body: SellUpdate, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    existing = db.execute(
+        "SELECT ps.* FROM position_sells ps JOIN stock_positions sp ON ps.position_id=sp.id WHERE ps.id=? AND sp.user_id=?",
+        (sell_id, user_id),
+    ).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Sell not found")
+    updates = body.model_dump(exclude_none=True)
+    if updates:
+        sets = ", ".join(f"{k}=?" for k in updates)
+        db.execute(f"UPDATE position_sells SET {sets} WHERE id=?", (*updates.values(), sell_id))
+        db.commit()
+    row = dict(db.execute("SELECT * FROM position_sells WHERE id=?", (sell_id,)).fetchone())
+    db.close()
+    return row
+
+
+@app.delete("/api/positions/sells/{sell_id}", status_code=204)
+def delete_sell(sell_id: int, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    existing = db.execute(
+        "SELECT ps.id FROM position_sells ps JOIN stock_positions sp ON ps.position_id=sp.id WHERE ps.id=? AND sp.user_id=?",
+        (sell_id, user_id),
+    ).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Sell not found")
+    db.execute("DELETE FROM position_sells WHERE id=?", (sell_id,))
+    db.commit()
+    db.close()
+
+
+@app.post("/api/positions/buys", response_model=BuyOut, status_code=201)
+def create_buy(body: BuyCreate, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    pos = db.execute("SELECT id FROM stock_positions WHERE id=? AND user_id=?", (body.position_id, user_id)).fetchone()
+    if not pos:
+        db.close()
+        raise HTTPException(404, "Position not found")
+    cur = db.execute(
+        "INSERT INTO position_buys (position_id, shares, price, date) VALUES (?,?,?,?)",
+        (body.position_id, body.shares, body.price, body.date),
+    )
+    db.commit()
+    row = dict(db.execute("SELECT * FROM position_buys WHERE id=?", (cur.lastrowid,)).fetchone())
+    db.close()
+    return row
+
+
+@app.patch("/api/positions/buys/{buy_id}", response_model=BuyOut)
+def update_buy(buy_id: int, body: BuyUpdate, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    existing = db.execute(
+        "SELECT pb.* FROM position_buys pb JOIN stock_positions sp ON pb.position_id=sp.id WHERE pb.id=? AND sp.user_id=?",
+        (buy_id, user_id),
+    ).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Buy not found")
+    updates = body.model_dump(exclude_none=True)
+    if updates:
+        sets = ", ".join(f"{k}=?" for k in updates)
+        db.execute(f"UPDATE position_buys SET {sets} WHERE id=?", (*updates.values(), buy_id))
+        db.commit()
+    row = dict(db.execute("SELECT * FROM position_buys WHERE id=?", (buy_id,)).fetchone())
+    db.close()
+    return row
+
+
+@app.delete("/api/positions/buys/{buy_id}", status_code=204)
+def delete_buy(buy_id: int, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    existing = db.execute(
+        "SELECT pb.id FROM position_buys pb JOIN stock_positions sp ON pb.position_id=sp.id WHERE pb.id=? AND sp.user_id=?",
+        (buy_id, user_id),
+    ).fetchone()
+    if not existing:
+        db.close()
+        raise HTTPException(404, "Buy not found")
+    db.execute("DELETE FROM position_buys WHERE id=?", (buy_id,))
+    db.commit()
+    db.close()
+
+
 @app.post("/api/positions/export-to-assets")
 def export_positions_to_assets(user_id: int = Depends(get_current_user)):
-    """Export stock positions to the Assets tab (brokers/stocks). Creates or updates."""
+    """Export stock positions to the Assets tab, grouped by broker with remaining shares."""
     db = get_db()
     positions = [dict(r) for r in db.execute(
         "SELECT * FROM stock_positions WHERE user_id=? AND symbol != ''", (user_id,)
@@ -814,6 +942,20 @@ def export_positions_to_assets(user_id: int = Depends(get_current_user)):
     if not positions:
         db.close()
         return {"synced": 0}
+
+    # Load buys and sells for remaining-shares calculation
+    all_buys = [dict(r) for r in db.execute(
+        "SELECT * FROM position_buys WHERE position_id IN (SELECT id FROM stock_positions WHERE user_id=?)", (user_id,)
+    ).fetchall()]
+    all_sells = [dict(r) for r in db.execute(
+        "SELECT * FROM position_sells WHERE position_id IN (SELECT id FROM stock_positions WHERE user_id=?)", (user_id,)
+    ).fetchall()]
+    buys_by_pos: dict[int, list] = {}
+    sells_by_pos: dict[int, list] = {}
+    for b in all_buys:
+        buys_by_pos.setdefault(b["position_id"], []).append(b)
+    for s in all_sells:
+        sells_by_pos.setdefault(s["position_id"], []).append(s)
 
     # Group positions by broker_name
     by_broker: dict[str, list] = {}
@@ -838,18 +980,24 @@ def export_positions_to_assets(user_id: int = Depends(get_current_user)):
         else:
             broker_id = broker["id"]
 
-        # Aggregate positions by symbol (sum shares)
+        # Aggregate positions by symbol within this broker
         symbol_agg: dict[str, dict] = {}
         for pos in broker_positions:
             sym = pos["symbol"]
             if sym not in symbol_agg:
                 symbol_agg[sym] = {"shares": 0, "cost": 0, "price": pos["current_price"], "currency": pos["currency"]}
-            symbol_agg[sym]["shares"] += pos["shares"]
-            symbol_agg[sym]["cost"] += pos["shares"] * pos["buy_price"]
+            pos_buys = buys_by_pos.get(pos["id"], [])
+            pos_sells = sells_by_pos.get(pos["id"], [])
+            additional_shares = sum(b["shares"] for b in pos_buys)
+            sold_shares = sum(s["shares"] for s in pos_sells)
+            remaining = pos["shares"] + additional_shares - sold_shares
+            additional_cost = sum(b["shares"] * b["price"] for b in pos_buys)
+            symbol_agg[sym]["shares"] += remaining
+            symbol_agg[sym]["cost"] += pos["shares"] * pos["buy_price"] + additional_cost
+            symbol_agg[sym]["price"] = pos["current_price"]
 
         for sym, agg in symbol_agg.items():
             avg_cost = agg["cost"] / agg["shares"] if agg["shares"] != 0 else 0
-            # Find existing stock in this broker
             existing = db.execute(
                 "SELECT id FROM stocks WHERE broker_id=? AND symbol=?", (broker_id, sym)
             ).fetchone()
@@ -884,40 +1032,80 @@ def refresh_positions(user_id: int = Depends(get_current_user)):
         db.close()
         return []
 
+    # Load all sells and buys grouped by position
+    pos_ids = [p["id"] for p in positions]
+    sells_map: dict[int, list] = {pid: [] for pid in pos_ids}
+    buys_map: dict[int, list] = {pid: [] for pid in pos_ids}
+    if pos_ids:
+        placeholders = ",".join("?" * len(pos_ids))
+        sells = [dict(r) for r in db.execute(
+            f"SELECT * FROM position_sells WHERE position_id IN ({placeholders}) ORDER BY date", pos_ids
+        ).fetchall()]
+        for s in sells:
+            sells_map[s["position_id"]].append(s)
+        buys = [dict(r) for r in db.execute(
+            f"SELECT * FROM position_buys WHERE position_id IN ({placeholders}) ORDER BY date", pos_ids
+        ).fetchall()]
+        for b in buys:
+            buys_map[b["position_id"]].append(b)
+
     results = []
     for pos in positions:
         symbol = pos["symbol"]
         buy_date = pos["buy_date"]
-        shares = pos["shares"]
+        buy_shares = pos["shares"]
+        position_sells = sells_map.get(pos["id"], [])
+        position_buys = buys_map.get(pos["id"], [])
 
         try:
             ticker = yf.Ticker(symbol)
             info = ticker.info
             current_price = info.get("regularMarketPrice") or info.get("currentPrice") or 0
             currency = info.get("currency", pos["currency"])
+            stock_name = info.get("shortName") or info.get("longName") or ""
 
-            # Calculate dividends between buy_date and sell_date (or now)
+            # Calculate dividends accounting for buys and sells
             total_dividends = 0.0
             if buy_date:
                 try:
                     divs = ticker.dividends
                     if not divs.empty:
-                        mask = divs.index >= buy_date
-                        sell_date = pos.get("sell_date", "")
-                        if sell_date:
-                            mask = mask & (divs.index <= sell_date)
-                        relevant_divs = divs[mask]
-                        total_dividends = float(relevant_divs.sum()) * shares
+                        relevant_divs = divs[divs.index >= buy_date]
+                        sorted_sells = sorted(position_sells, key=lambda s: s["date"])
+                        sorted_buys = sorted(position_buys, key=lambda b: b["date"])
+
+                        for div_date, div_per_share in relevant_divs.items():
+                            div_date_str = str(div_date.date()) if hasattr(div_date, 'date') else str(div_date)[:10]
+                            # Shares held = initial + additional buys before date - sells before date
+                            additional_bought = sum(
+                                b["shares"] for b in sorted_buys
+                                if b["date"] and b["date"] <= div_date_str
+                            )
+                            shares_sold = sum(
+                                s["shares"] for s in sorted_sells
+                                if s["date"] and s["date"] <= div_date_str
+                            )
+                            shares_held = buy_shares + additional_bought - shares_sold
+                            if shares_held > 0:
+                                total_dividends += float(div_per_share) * shares_held
                 except Exception:
                     pass
 
             db.execute(
-                "UPDATE stock_positions SET current_price=?, total_dividends=?, currency=? WHERE id=?",
-                (float(current_price), total_dividends, currency, pos["id"]),
+                "UPDATE stock_positions SET current_price=?, total_dividends=?, currency=?, name=? WHERE id=?",
+                (float(current_price), total_dividends, currency, stock_name, pos["id"]),
             )
-            results.append({**pos, "current_price": float(current_price), "total_dividends": total_dividends, "currency": currency})
+            results.append({
+                **pos,
+                "current_price": float(current_price),
+                "total_dividends": total_dividends,
+                "currency": currency,
+                "name": stock_name,
+                "sells": position_sells,
+                "buys": position_buys,
+            })
         except Exception:
-            results.append(pos)
+            results.append({**pos, "sells": position_sells, "buys": position_buys})
 
     db.commit()
     db.close()

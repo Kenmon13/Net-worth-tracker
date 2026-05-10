@@ -165,18 +165,63 @@ class PositionCreate(BaseModel):
 class PositionUpdate(BaseModel):
     broker_name: str | None = None
     symbol: str | None = None
+    name: str | None = None
     shares: float | None = None
     buy_price: float | None = None
     buy_date: str | None = None
     sell_price: float | None = None
     sell_date: str | None = None
     currency: str | None = None
+    current_price: float | None = None
+
+
+class SellCreate(BaseModel):
+    position_id: int
+    shares: float = 0
+    price: float = 0
+    date: str = ""
+
+
+class SellUpdate(BaseModel):
+    shares: float | None = None
+    price: float | None = None
+    date: str | None = None
+
+
+class SellOut(BaseModel):
+    id: int
+    position_id: int
+    shares: float
+    price: float
+    date: str
+
+
+class BuyCreate(BaseModel):
+    position_id: int
+    shares: float = 0
+    price: float = 0
+    date: str = ""
+
+
+class BuyUpdate(BaseModel):
+    shares: float | None = None
+    price: float | None = None
+    date: str | None = None
+
+
+class BuyOut(BaseModel):
+    id: int
+    position_id: int
+    shares: float
+    price: float
+    date: str
 
 
 class PositionOut(BaseModel):
     id: int
     broker_name: str
     symbol: str
+    name: str
     shares: float
     buy_price: float
     buy_date: str
@@ -185,6 +230,8 @@ class PositionOut(BaseModel):
     currency: str
     current_price: float
     total_dividends: float
+    sells: list[SellOut] = []
+    buys: list[BuyOut] = []
 
 
 class AuthRequest(BaseModel):

@@ -1,4 +1,4 @@
-import type { Broker, BrokerCash, CPF, CurrencyItem, ForexRates, Portfolio, Position, SimpleItem, Snapshot, Stock } from './types';
+import type { Broker, BrokerCash, CPF, CurrencyItem, ForexRates, Portfolio, Position, PositionBuy, PositionSell, SimpleItem, Snapshot, Stock } from './types';
 import { clearToken, getToken } from './auth';
 
 const BASE = '/api';
@@ -214,6 +214,40 @@ export const deletePosition = (id: number) =>
 
 export const refreshPositions = () =>
   fetch(`${BASE}/positions/refresh`, { method: 'POST', headers: authHeaders() }).then(r => json<Position[]>(r));
+
+export const createSell = (position_id: number, data?: Partial<PositionSell>) =>
+  fetch(`${BASE}/positions/sells`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ position_id, ...data }),
+  }).then(r => json<PositionSell>(r));
+
+export const updateSell = (id: number, data: Partial<PositionSell>) =>
+  fetch(`${BASE}/positions/sells/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  }).then(r => json<PositionSell>(r));
+
+export const deleteSell = (id: number) =>
+  fetch(`${BASE}/positions/sells/${id}`, { method: 'DELETE', headers: authHeaders() });
+
+export const createBuy = (position_id: number, data?: Partial<PositionBuy>) =>
+  fetch(`${BASE}/positions/buys`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ position_id, ...data }),
+  }).then(r => json<PositionBuy>(r));
+
+export const updateBuy = (id: number, data: Partial<PositionBuy>) =>
+  fetch(`${BASE}/positions/buys/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  }).then(r => json<PositionBuy>(r));
+
+export const deleteBuy = (id: number) =>
+  fetch(`${BASE}/positions/buys/${id}`, { method: 'DELETE', headers: authHeaders() });
 
 export const exportPositionsToAssets = () =>
   fetch(`${BASE}/positions/export-to-assets`, { method: 'POST', headers: authHeaders() }).then(r => json<{ synced: number }>(r));
