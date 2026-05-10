@@ -14,9 +14,12 @@ const BROKERS_LIST = [
   'Moomoo', 'Tiger Brokers', 'SGX', 'EndowUs', 'CDP', 'Vesting Stocks', 'Other',
 ];
 
+let cachedPortfolio: Portfolio | null = null;
+let cachedForexRates: ForexRates = { SGD: 1 };
+
 export default function TrackerPage() {
-  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [forexRates, setForexRates] = useState<ForexRates>({ SGD: 1 });
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(cachedPortfolio);
+  const [forexRates, setForexRates] = useState<ForexRates>(cachedForexRates);
   const [brokerInput, setBrokerInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -26,6 +29,8 @@ export default function TrackerPage() {
 
   const refresh = useCallback(async () => {
     const [data, rates] = await Promise.all([api.getPortfolio(), api.getForexRates()]);
+    cachedPortfolio = data;
+    cachedForexRates = rates;
     setPortfolio(data);
     setForexRates(rates);
   }, []);
