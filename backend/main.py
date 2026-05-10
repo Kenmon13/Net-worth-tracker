@@ -188,6 +188,16 @@ def delete_user(user_id: int, admin_id: int = Depends(require_admin)):
     return {"deleted": user_id}
 
 
+@app.post("/api/admin/reset-id-counter")
+def reset_id_counter(_: int = Depends(require_admin)):
+    db = get_db()
+    max_id = db.execute("SELECT COALESCE(MAX(id), 0) FROM users").fetchone()[0]
+    db.execute("UPDATE sqlite_sequence SET seq=? WHERE name='users'", (max_id,))
+    db.commit()
+    db.close()
+    return {"next_id": max_id + 1}
+
+
 # ── Portfolio (read-only aggregate) ──────────────────────────────────────────
 
 

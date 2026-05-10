@@ -66,6 +66,9 @@ export const getAdminUsers = () =>
 export const deleteAdminUser = (userId: number) =>
   fetch(`${BASE}/admin/users/${userId}`, { method: 'DELETE', headers: authHeaders() }).then(r => json<{ deleted: number }>(r));
 
+export const resetIdCounter = () =>
+  fetch(`${BASE}/admin/reset-id-counter`, { method: 'POST', headers: authHeaders() }).then(r => json<{ next_id: number }>(r));
+
 // Portfolio
 export const getPortfolio = () =>
   fetch(`${BASE}/portfolio`, { headers: authHeaders() }).then(r => json<Portfolio>(r));

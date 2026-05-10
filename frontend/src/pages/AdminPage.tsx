@@ -36,7 +36,18 @@ export default function AdminPage() {
   return (
     <>
       <h1 className="text-3xl font-bold mb-1">Admin</h1>
-      <p className="text-slate-400 mb-6">Registered users ({users.length})</p>
+      <div className="flex items-center gap-4 mb-6">
+        <p className="text-slate-400">Registered users ({users.length})</p>
+        <button
+          onClick={async () => {
+            const result = await api.resetIdCounter();
+            alert(`ID counter reset. Next new user will be ID ${result.next_id}.`);
+          }}
+          className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-md text-xs"
+        >
+          Reset ID Counter
+        </button>
+      </div>
 
       <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
         <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-x-6 px-5 py-3 border-b border-slate-700 text-[11px] text-slate-500 uppercase">
