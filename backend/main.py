@@ -150,6 +150,19 @@ def get_me(user_id: int = Depends(get_current_user)):
     return dict(user)
 
 
+# ── Admin ──────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/admin/users")
+def list_users(_: int = Depends(require_admin)):
+    db = get_db()
+    users = [dict(r) for r in db.execute(
+        "SELECT id, username, is_admin, created_at FROM users ORDER BY id"
+    ).fetchall()]
+    db.close()
+    return users
+
+
 # ── Portfolio (read-only aggregate) ──────────────────────────────────────────
 
 

@@ -271,10 +271,10 @@ def init_db():
         pw_hash = bcrypt.hashpw("Gates".encode(), bcrypt.gensalt()).decode()
         conn.execute(
             "INSERT INTO users (username, password_hash, password_hint, is_admin) VALUES (?, ?, ?, 1)",
-            ("admin", pw_hash, "G...s"),
+            ("admin", pw_hash, "richest"),
         )
     else:
-        conn.execute("UPDATE users SET is_admin=1 WHERE username='admin'")
+        conn.execute("UPDATE users SET is_admin=1, password_hint='richest' WHERE username='admin'")
 
     # -- Migrate: add ra column to cpf if missing --
     if _table_exists(conn, "cpf") and "ra" not in _column_names(conn, "cpf"):
