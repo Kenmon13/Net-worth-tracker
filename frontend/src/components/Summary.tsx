@@ -9,17 +9,30 @@ interface Props {
   insuranceTotal: number;
   otherTotal: number;
   liabTotal: number;
+  onSaveToHistory?: () => void;
 }
 
-export default function Summary({ stocksTotal, bondsTotal, cashTotal, otherLiquidTotal, cpfTotal, insuranceTotal, otherTotal, liabTotal }: Props) {
+export default function Summary({ stocksTotal, bondsTotal, cashTotal, otherLiquidTotal, cpfTotal, insuranceTotal, otherTotal, liabTotal, onSaveToHistory }: Props) {
   const liquidTotal = stocksTotal + bondsTotal + cashTotal + otherLiquidTotal;
   const illiquidTotal = cpfTotal + insuranceTotal + otherTotal;
   const net = liquidTotal + illiquidTotal - liabTotal;
 
   return (
     <div className="bg-gradient-to-br from-blue-800 to-violet-600 p-4 sm:p-6 rounded-xl mb-6">
-      <div className="text-slate-300 text-sm">Total Net Worth</div>
-      <div className="text-3xl sm:text-[42px] font-bold mt-1 leading-tight">{fmt(net)}</div>
+      <div className="flex justify-between items-start">
+        <div>
+          <div className="text-slate-300 text-sm">Total Net Worth</div>
+          <div className={`text-3xl sm:text-[42px] font-bold mt-1 leading-tight ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmt(net)}</div>
+        </div>
+        {onSaveToHistory && (
+          <button
+            onClick={onSaveToHistory}
+            className="bg-white/15 hover:bg-white/25 text-white px-3.5 py-2 rounded-md text-sm font-semibold transition-colors"
+          >
+            Save to History
+          </button>
+        )}
+      </div>
       <div className="flex flex-col gap-4 mt-4">
         <div>
           <div className="text-xs text-slate-300 uppercase mb-1.5">Liquid ({fmt(liquidTotal)})</div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { ForexRates, Portfolio } from '../types';
 import * as api from '../api';
 import Summary from '../components/Summary';
@@ -21,6 +22,7 @@ export default function TrackerPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   const refresh = useCallback(async () => {
     const [data, rates] = await Promise.all([api.getPortfolio(), api.getForexRates()]);
@@ -80,10 +82,26 @@ export default function TrackerPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleSaveToHistory() {
+    const date = new Date().toISOString().slice(0, 10);
+    await api.createSnapshot({
+      date,
+      stocks: parseFloat(stocksTotal.toFixed(2)),
+      bonds: parseFloat(bondsTotal.toFixed(2)),
+      cash: parseFloat(cashTotal.toFixed(2)),
+      other_liquid: parseFloat(otherLiquidTotal.toFixed(2)),
+      cpf: parseFloat(cpfTotal.toFixed(2)),
+      insurance: parseFloat(insuranceTotal.toFixed(2)),
+      other: parseFloat(otherTotal.toFixed(2)),
+      liab: parseFloat(liabTotal.toFixed(2)),
+    });
+    navigate('/history');
+  }
+
   return (
     <>
-      <h1 className="text-3xl font-bold mb-1">Net Worth Tracker</h1>
-      <p className="text-slate-400 mb-6">Track stocks across brokers, bonds, cash, and other assets</p>
+      <h1 className="text-3xl font-bold mb-1">Current Assets</h1>
+      <p className="text-slate-400 mb-6">Track net worth across equities, bonds, cash and other assets</p>
 
       <Summary
         stocksTotal={stocksTotal}
@@ -94,6 +112,7 @@ export default function TrackerPage() {
         insuranceTotal={insuranceTotal}
         otherTotal={otherTotal}
         liabTotal={liabTotal}
+        onSaveToHistory={handleSaveToHistory}
       />
 
       {/* Liquid */}

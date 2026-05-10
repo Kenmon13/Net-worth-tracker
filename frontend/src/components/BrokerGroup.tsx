@@ -426,15 +426,13 @@ export default function BrokerGroup({ broker, stocks, brokerCash, forexRates, on
       ) : (
         <>
           <div className="overflow-x-auto -mx-3.5 px-3.5">
-            <div className="min-w-[700px]">
+            <div className="min-w-[500px]">
               {stocks.length > 0 && (
-                <div className="grid grid-cols-[1.2fr_0.7fr_0.9fr_0.9fr_1fr_1fr_0.8fr_auto] gap-2 mb-1 text-[11px] text-slate-400 uppercase">
+                <div className="grid grid-cols-[1.2fr_0.7fr_0.9fr_1fr_0.8fr_auto] gap-2 mb-1 text-[11px] text-slate-400 uppercase">
                   <div>Symbol</div>
                   <div>Shares</div>
-                  <div>{'\u00A0'}Price</div>
                   <div>Current</div>
                   <div>Value</div>
-                  <div>P/L</div>
                   <div>SGD Value</div>
                   <div></div>
                 </div>
@@ -443,18 +441,11 @@ export default function BrokerGroup({ broker, stocks, brokerCash, forexRates, on
               {stocks.map((s) => {
                 const isShort = s.shares < 0;
                 const value = s.shares * s.price;
-                const costTotal = s.shares * s.cost;
-                const pl = value - costTotal;
-                const absCost = Math.abs(costTotal);
-                const plPct = absCost > 0 ? (pl / absCost) * 100 : 0;
-                const isPositive = pl >= 0;
-                const plSign = isPositive ? '+' : '-';
                 const cur = s.currency || 'SGD';
-                const plText = absCost > 0 ? `${plSign}${fmt(Math.abs(pl), cur)} (${plSign}${Math.abs(plPct).toFixed(2)}%)` : '\u2014';
                 const sgdValue = toSGD(value, cur);
 
                 return (
-                  <div key={s.id} className="grid grid-cols-[1.2fr_0.7fr_0.9fr_0.9fr_1fr_1fr_0.8fr_auto] gap-2 mb-2.5">
+                  <div key={s.id} className="grid grid-cols-[1.2fr_0.7fr_0.9fr_1fr_0.8fr_auto] gap-2 mb-2.5">
                     <SymbolInput
                       stock={s}
                       onChange={(value) => handleStockChange(s, 'symbol', value)}
@@ -466,16 +457,9 @@ export default function BrokerGroup({ broker, stocks, brokerCash, forexRates, on
                       decimals={0}
                       onChange={(v) => handleStockChange(s, 'shares', v)}
                     />
-                    <NumberInput
-                      defaultValue={s.cost}
-                      onChange={(v) => handleStockChange(s, 'cost', v)}
-                    />
                     <div className="self-center text-slate-200 text-sm px-2.5">{s.price ? fmt(s.price, cur) : '—'}</div>
                     <div className={`self-center font-semibold text-sm ${isShort ? 'text-orange-400' : 'text-green-500'}`}>
                       {fmt(Math.abs(value), cur)}{isShort ? ' (S)' : ''}
-                    </div>
-                    <div className={`self-center font-semibold text-sm ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-                      {plText}
                     </div>
                     <div className="self-center text-slate-300 text-sm font-semibold">
                       {s.price ? fmt(Math.abs(sgdValue), 'SGD') : '—'}

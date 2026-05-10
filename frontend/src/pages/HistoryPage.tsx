@@ -23,30 +23,6 @@ export default function HistoryPage() {
 
   const previewTotal = form.stocks + form.bonds + form.cash + form.other_liquid + form.cpf + form.insurance + form.other - form.liab;
 
-  async function loadFromTracker() {
-    const [portfolio, forexRates] = await Promise.all([api.getPortfolio(), api.getForexRates()]);
-    const toSGD = (amount: number, currency: string) => amount * (forexRates[currency] || 1);
-    const brokerCashTotal = portfolio.broker_cash.reduce((t, c) => t + toSGD(c.amount, c.currency), 0);
-    const stocksTotal = portfolio.stocks.reduce((t, s) => t + toSGD(s.shares * s.price, s.currency), 0) + brokerCashTotal;
-    const bondsTotal = portfolio.bonds.reduce((t, i) => t + i.value, 0);
-    const cashTotal = portfolio.cash.reduce((t, i) => t + i.value, 0);
-    const otherLiquidTotal = portfolio.other_liquid.reduce((t, i) => t + toSGD(i.value, i.currency), 0);
-    const cpfTotal = portfolio.cpf.oa + portfolio.cpf.sa + portfolio.cpf.ma + portfolio.cpf.ra;
-    const insuranceTotal = portfolio.insurance.reduce((t, i) => t + i.value, 0);
-    const otherTotal = portfolio.other.reduce((t, i) => t + toSGD(i.value, i.currency), 0);
-    const liabTotal = portfolio.liabilities.reduce((t, i) => t + i.value, 0);
-    setForm({
-      stocks: parseFloat(stocksTotal.toFixed(2)),
-      bonds: parseFloat(bondsTotal.toFixed(2)),
-      cash: parseFloat(cashTotal.toFixed(2)),
-      other_liquid: parseFloat(otherLiquidTotal.toFixed(2)),
-      cpf: parseFloat(cpfTotal.toFixed(2)),
-      insurance: parseFloat(insuranceTotal.toFixed(2)),
-      other: parseFloat(otherTotal.toFixed(2)),
-      liab: parseFloat(liabTotal.toFixed(2)),
-    });
-  }
-
   async function saveSnapshot() {
     if (!date) { alert('Please select a date.'); return; }
     await api.createSnapshot({ date, ...form });
@@ -187,13 +163,10 @@ export default function HistoryPage() {
               className="bg-black/30 border border-white/20 text-slate-200 px-3.5 py-2.5 rounded-md text-sm w-[160px] focus:outline-none focus:border-indigo-300"
             />
           </div>
-          <button onClick={loadFromTracker} className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2.5 rounded-md text-sm font-semibold">
-            Load from Tracker
-          </button>
-          <button onClick={saveSnapshot} className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2.5 rounded-md text-sm font-semibold">
+<button onClick={saveSnapshot} className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2.5 rounded-md text-sm font-semibold">
             Save Snapshot
           </button>
-          <div className="text-[22px] font-bold self-center px-2 min-w-[140px]">
+          <div className={`text-[22px] font-bold self-end px-2 min-w-[140px] ${previewTotal >= 0 ? 'text-green-500' : 'text-red-500'}`}>
             {fmt(previewTotal)}
           </div>
         </div>

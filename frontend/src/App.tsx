@@ -27,50 +27,53 @@ function AppLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
-      <div className="max-w-[1100px] mx-auto px-6 py-6">
-        <nav className="flex gap-3 mb-6 items-center">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) =>
-              `px-4 py-1.5 rounded-md border text-sm transition-colors ${
-                isActive
-                  ? 'bg-indigo-500 text-white border-indigo-500'
-                  : 'border-slate-700 text-indigo-300 hover:bg-slate-800'
-              }`
-            }
+    <div className="min-h-screen bg-slate-950 text-slate-200 flex">
+      <nav className="w-48 shrink-0 bg-slate-900 border-r border-slate-800 p-4 flex flex-col gap-2 sticky top-0 h-screen">
+        <div className="text-lg font-bold text-white mb-4">Net Worth</div>
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            `px-3 py-2 rounded-md text-sm transition-colors ${
+              isActive
+                ? 'bg-indigo-500 text-white'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+            }`
+          }
+        >
+          Assets
+        </NavLink>
+        <NavLink
+          to="/history"
+          className={({ isActive }) =>
+            `px-3 py-2 rounded-md text-sm transition-colors ${
+              isActive
+                ? 'bg-indigo-500 text-white'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+            }`
+          }
+        >
+          History
+        </NavLink>
+      </nav>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex justify-end items-center gap-3 px-6 py-3">
+          {username && (
+            <span className="text-sm text-slate-400">{username}</span>
+          )}
+          <button
+            onClick={handleLogout}
+            className="px-3 py-1.5 rounded-md border border-slate-700 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
           >
-            Tracker
-          </NavLink>
-          <NavLink
-            to="/history"
-            className={({ isActive }) =>
-              `px-4 py-1.5 rounded-md border text-sm transition-colors ${
-                isActive
-                  ? 'bg-indigo-500 text-white border-indigo-500'
-                  : 'border-slate-700 text-indigo-300 hover:bg-slate-800'
-              }`
-            }
-          >
-            History
-          </NavLink>
-          <div className="ml-auto flex items-center gap-3">
-            {username && (
-              <span className="text-sm text-slate-400">{username}</span>
-            )}
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1.5 rounded-md border border-slate-700 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
-            >
-              Logout
-            </button>
-          </div>
-        </nav>
+            Logout
+          </button>
+        </div>
+        <div className="flex-1 max-w-[1100px] mx-auto px-6 pb-6">
         <Routes>
           <Route path="/" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
           <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
         </Routes>
+        </div>
       </div>
     </div>
   );
