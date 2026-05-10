@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import TrackerPage from './pages/TrackerPage';
+import StocksPage from './pages/StocksPage';
 import HistoryPage from './pages/HistoryPage';
 import LoginPage from './pages/LoginPage';
 import { isLoggedIn, clearToken } from './auth';
@@ -44,6 +45,18 @@ function AppLayout() {
           Assets
         </NavLink>
         <NavLink
+          to="/stocks"
+          className={({ isActive }) =>
+            `px-3 py-2 rounded-md text-sm transition-colors ${
+              isActive
+                ? 'bg-indigo-500 text-white'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+            }`
+          }
+        >
+          Stocks
+        </NavLink>
+        <NavLink
           to="/history"
           className={({ isActive }) =>
             `px-3 py-2 rounded-md text-sm transition-colors ${
@@ -71,6 +84,7 @@ function AppLayout() {
         <div className="flex-1 max-w-[1100px] mx-auto px-6 pb-6">
         <Routes>
           <Route path="/" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
+          <Route path="/stocks" element={<ProtectedRoute><StocksPage /></ProtectedRoute>} />
           <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
         </Routes>
         </div>

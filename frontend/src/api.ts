@@ -1,4 +1,4 @@
-import type { Broker, BrokerCash, CPF, CurrencyItem, ForexRates, Portfolio, SimpleItem, Snapshot, Stock } from './types';
+import type { Broker, BrokerCash, CPF, CurrencyItem, ForexRates, Portfolio, Position, SimpleItem, Snapshot, Stock } from './types';
 import { clearToken, getToken } from './auth';
 
 const BASE = '/api';
@@ -190,6 +190,33 @@ export const updateCPFLimits = (frs: number, bhs: number, ers: number) =>
     method: 'PUT',
     headers: authHeaders(),
   }).then(r => json<CPFLimits>(r));
+
+// Positions (Stocks tab)
+export const getPositions = () =>
+  fetch(`${BASE}/positions`, { headers: authHeaders() }).then(r => json<Position[]>(r));
+
+export const createPosition = (data?: Partial<Position>) =>
+  fetch(`${BASE}/positions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data || {}),
+  }).then(r => json<Position>(r));
+
+export const updatePosition = (id: number, data: Partial<Position>) =>
+  fetch(`${BASE}/positions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  }).then(r => json<Position>(r));
+
+export const deletePosition = (id: number) =>
+  fetch(`${BASE}/positions/${id}`, { method: 'DELETE', headers: authHeaders() });
+
+export const refreshPositions = () =>
+  fetch(`${BASE}/positions/refresh`, { method: 'POST', headers: authHeaders() }).then(r => json<Position[]>(r));
+
+export const exportPositionsToAssets = () =>
+  fetch(`${BASE}/positions/export-to-assets`, { method: 'POST', headers: authHeaders() }).then(r => json<{ synced: number }>(r));
 
 // Snapshots
 export const getSnapshots = () =>

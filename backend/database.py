@@ -306,8 +306,37 @@ def init_db():
             ],
         )
 
+    # -- Stock Positions (Stocks tab — dividend tracking) --
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS stock_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            broker_name TEXT NOT NULL DEFAULT '',
+            symbol TEXT NOT NULL DEFAULT '',
+            shares REAL NOT NULL DEFAULT 0,
+            buy_price REAL NOT NULL DEFAULT 0,
+            buy_date TEXT NOT NULL DEFAULT '',
+            sell_price REAL NOT NULL DEFAULT 0,
+            sell_date TEXT NOT NULL DEFAULT '',
+            currency TEXT NOT NULL DEFAULT 'USD',
+            current_price REAL NOT NULL DEFAULT 0,
+            total_dividends REAL NOT NULL DEFAULT 0
+        )
+    """)
+
+    # Migrate: add columns if missing
+    if _table_exists(conn, "stock_positions"):
+        pos_cols = _column_names(conn, "stock_positions")
+        if "broker_name" not in pos_cols:
+            conn.execute("ALTER TABLE stock_positions ADD COLUMN broker_name TEXT NOT NULL DEFAULT ''")
+        if "sell_price" not in pos_cols:
+            conn.execute("ALTER TABLE stock_positions ADD COLUMN sell_price REAL NOT NULL DEFAULT 0")
+        if "sell_date" not in pos_cols:
+            conn.execute("ALTER TABLE stock_positions ADD COLUMN sell_date TEXT NOT NULL DEFAULT ''")
+
     # -- Indexes --
     conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_positions_user ON stock_positions(user_id);
         CREATE INDEX IF NOT EXISTS idx_brokers_user ON brokers(user_id);
         CREATE INDEX IF NOT EXISTS idx_bonds_user ON bonds(user_id);
         CREATE INDEX IF NOT EXISTS idx_cash_user ON cash(user_id);

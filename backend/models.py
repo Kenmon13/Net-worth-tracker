@@ -151,6 +151,42 @@ class PortfolioOut(BaseModel):
     cpf: CPFOut
 
 
+class PositionCreate(BaseModel):
+    broker_name: str = ""
+    symbol: str = ""
+    shares: float = 0
+    buy_price: float = 0
+    buy_date: str = ""
+    sell_price: float = 0
+    sell_date: str = ""
+    currency: str = "USD"
+
+
+class PositionUpdate(BaseModel):
+    broker_name: str | None = None
+    symbol: str | None = None
+    shares: float | None = None
+    buy_price: float | None = None
+    buy_date: str | None = None
+    sell_price: float | None = None
+    sell_date: str | None = None
+    currency: str | None = None
+
+
+class PositionOut(BaseModel):
+    id: int
+    broker_name: str
+    symbol: str
+    shares: float
+    buy_price: float
+    buy_date: str
+    sell_price: float
+    sell_date: str
+    currency: str
+    current_price: float
+    total_dividends: float
+
+
 class AuthRequest(BaseModel):
     username: str
     password: str
