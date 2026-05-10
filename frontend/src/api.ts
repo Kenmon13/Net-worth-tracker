@@ -50,7 +50,18 @@ export const getPasswordHint = (username: string) =>
   });
 
 export const getMe = () =>
-  fetch(`${BASE}/auth/me`, { headers: authHeaders() }).then(r => json<{ id: number; username: string }>(r));
+  fetch(`${BASE}/auth/me`, { headers: authHeaders() }).then(r => json<{ id: number; username: string; is_admin: boolean }>(r));
+
+// Admin
+export interface AdminUser {
+  id: number;
+  username: string;
+  is_admin: number;
+  created_at: string;
+}
+
+export const getAdminUsers = () =>
+  fetch(`${BASE}/admin/users`, { headers: authHeaders() }).then(r => json<AdminUser[]>(r));
 
 // Portfolio
 export const getPortfolio = () =>

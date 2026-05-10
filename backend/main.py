@@ -143,7 +143,7 @@ def password_hint(body: dict):
 @app.get("/api/auth/me", response_model=UserOut)
 def get_me(user_id: int = Depends(get_current_user)):
     db = get_db()
-    user = db.execute("SELECT id, username FROM users WHERE id=?", (user_id,)).fetchone()
+    user = db.execute("SELECT id, username, is_admin FROM users WHERE id=?", (user_id,)).fetchone()
     db.close()
     if not user:
         raise HTTPException(404, "User not found")

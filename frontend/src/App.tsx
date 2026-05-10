@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import TrackerPage from './pages/TrackerPage';
 import StocksPage from './pages/StocksPage';
 import HistoryPage from './pages/HistoryPage';
+import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
 import { isLoggedIn, clearToken } from './auth';
 import { getMe } from './api';
@@ -14,11 +15,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function AppLayout() {
   const [username, setUsername] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (isLoggedIn()) {
-      getMe().then(u => setUsername(u.username)).catch(() => {});
+      getMe().then(u => { setUsername(u.username); setIsAdmin(!!u.is_admin); }).catch(() => {});
     }
   }, []);
 
@@ -47,6 +49,7 @@ function AppLayout() {
         <NavLink to="/" end className={navLinkClass}>Assets</NavLink>
         <NavLink to="/stocks" className={navLinkClass}>Stocks</NavLink>
         <NavLink to="/history" className={navLinkClass}>History</NavLink>
+        {isAdmin && <NavLink to="/admin" className={navLinkClass}>Admin</NavLink>}
       </nav>
       <div className="flex-1 min-w-0 flex flex-col pb-16 md:pb-0">
         <div className="flex justify-end items-center gap-3 px-4 md:px-6 py-3">
@@ -65,6 +68,7 @@ function AppLayout() {
           <Route path="/" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
           <Route path="/stocks" element={<ProtectedRoute><StocksPage /></ProtectedRoute>} />
           <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
         </Routes>
         </div>
       </div>
@@ -82,6 +86,12 @@ function AppLayout() {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           <span>History</span>
         </NavLink>
+        {isAdmin && (
+          <NavLink to="/admin" className={mobileNavClass}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197" /></svg>
+            <span>Admin</span>
+          </NavLink>
+        )}
       </nav>
     </div>
   );
