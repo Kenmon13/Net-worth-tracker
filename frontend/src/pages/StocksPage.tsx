@@ -384,50 +384,6 @@ export default function StocksPage() {
                     </div>
                   </div>
 
-                  {/* Sell lots */}
-                  {pos.sells.length > 0 && (
-                    <div className="ml-4 mt-2 border-l-2 border-slate-700 pl-3">
-                      <div className="text-[10px] text-slate-500 uppercase mb-1">Sells</div>
-                      {pos.sells.map((sell) => (
-                        <div key={sell.id} className="flex items-center gap-3 mb-1.5">
-                          <div className="w-[80px]">
-                            <NumberInput
-                              defaultValue={sell.shares}
-                              step="1"
-                              decimals={0}
-                              className="bg-slate-900 border border-slate-600 text-slate-200 px-2 py-1 rounded-md text-xs w-full text-center focus:outline-none focus:border-indigo-500"
-                              onChange={(v) => handleSellChange(sell.id, 'shares', v)}
-                            />
-                          </div>
-                          <span className="text-slate-500 text-xs">shares @</span>
-                          <div className="w-[80px]">
-                            <NumberInput
-                              defaultValue={sell.price}
-                              className="bg-slate-900 border border-slate-600 text-slate-200 px-2 py-1 rounded-md text-xs w-full text-center focus:outline-none focus:border-indigo-500"
-                              onChange={(v) => handleSellChange(sell.id, 'price', v)}
-                            />
-                          </div>
-                          <span className="text-slate-500 text-xs">on</span>
-                          <input
-                            type="date"
-                            className="bg-slate-900 border border-slate-600 text-slate-200 px-2 py-1 rounded-md text-xs w-[120px] focus:outline-none focus:border-indigo-500"
-                            defaultValue={sell.date}
-                            onChange={(e) => handleSellChange(sell.id, 'date', e.target.value)}
-                          />
-                          <span className="text-slate-400 text-xs">
-                            = {fmt(sell.shares * sell.price)}
-                          </span>
-                          <button
-                            onClick={() => handleDeleteSell(sell.id)}
-                            className="bg-red-950 hover:bg-red-900 text-white px-2 py-0.5 rounded text-xs ml-1"
-                          >
-                            x
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   {/* Additional buys */}
                   {pos.buys.length > 0 && (
                     <div className="ml-4 mt-2 border-l-2 border-green-800 pl-3">
@@ -463,6 +419,50 @@ export default function StocksPage() {
                           </span>
                           <button
                             onClick={() => handleDeleteBuy(buy.id)}
+                            className="bg-red-950 hover:bg-red-900 text-white px-2 py-0.5 rounded text-xs ml-1"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Sell lots */}
+                  {pos.sells.length > 0 && (
+                    <div className="ml-4 mt-2 border-l-2 border-slate-700 pl-3">
+                      <div className="text-[10px] text-slate-500 uppercase mb-1">Sells</div>
+                      {pos.sells.map((sell) => (
+                        <div key={sell.id} className="flex items-center gap-3 mb-1.5">
+                          <div className="w-[80px]">
+                            <NumberInput
+                              defaultValue={sell.shares}
+                              step="1"
+                              decimals={0}
+                              className="bg-slate-900 border border-slate-600 text-slate-200 px-2 py-1 rounded-md text-xs w-full text-center focus:outline-none focus:border-indigo-500"
+                              onChange={(v) => handleSellChange(sell.id, 'shares', v)}
+                            />
+                          </div>
+                          <span className="text-slate-500 text-xs">shares @</span>
+                          <div className="w-[80px]">
+                            <NumberInput
+                              defaultValue={sell.price}
+                              className="bg-slate-900 border border-slate-600 text-slate-200 px-2 py-1 rounded-md text-xs w-full text-center focus:outline-none focus:border-indigo-500"
+                              onChange={(v) => handleSellChange(sell.id, 'price', v)}
+                            />
+                          </div>
+                          <span className="text-slate-500 text-xs">on</span>
+                          <input
+                            type="date"
+                            className="bg-slate-900 border border-slate-600 text-slate-200 px-2 py-1 rounded-md text-xs w-[120px] focus:outline-none focus:border-indigo-500"
+                            defaultValue={sell.date}
+                            onChange={(e) => handleSellChange(sell.id, 'date', e.target.value)}
+                          />
+                          <span className="text-slate-400 text-xs">
+                            = {fmt(sell.shares * sell.price)}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteSell(sell.id)}
                             className="bg-red-950 hover:bg-red-900 text-white px-2 py-0.5 rounded text-xs ml-1"
                           >
                             x
