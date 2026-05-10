@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, Legend,
+  BarChart, Bar, PieChart, Pie, Cell, Legend, ReferenceLine,
 } from 'recharts';
 import type { Snapshot } from '../types';
 import * as api from '../api';
@@ -129,6 +129,44 @@ export default function HistoryPage() {
 
   const liquidTotal = latest ? LIQUID_CATEGORIES.reduce((t, c) => t + latest[c.key], 0) : 0;
   const illiquidTotal = latest ? ILLIQUID_CATEGORIES.reduce((t, c) => t + latest[c.key], 0) : 0;
+
+  const CHART_LINES = [
+    { key: 'total', label: 'Net Worth', color: '#6366f1' },
+    { key: 'liquid', label: 'Liquid', color: '#22c55e' },
+    { key: 'illiquid', label: 'Illiquid', color: '#f59e0b' },
+    ...LIQUID_CATEGORIES.map((c) => ({ key: c.key, label: c.label, color: c.color })),
+    ...ILLIQUID_CATEGORIES.map((c) => ({ key: c.key, label: c.label, color: c.color })),
+    { key: 'liab', label: 'Liabilities', color: '#ef4444' },
+  ] as const;
+
+  const [activeLines, setActiveLines] = useState<Set<string>>(() => new Set(['total']));
+
+  const toggleLine = (key: string) => {
+    setActiveLines((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) { if (next.size > 1) next.delete(key); }
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const chartData = useMemo(() =>
+    snapshots.map((snap) => ({
+      date: snap.date,
+      total: snap.total,
+      liquid: snap.stocks + snap.bonds + snap.cash + snap.other_liquid,
+      illiquid: snap.cpf + snap.insurance + snap.other,
+      stocks: snap.stocks,
+      bonds: snap.bonds,
+      cash: snap.cash,
+      other_liquid: snap.other_liquid,
+      cpf: snap.cpf,
+      insurance: snap.insurance,
+      other: snap.other,
+      liab: snap.liab,
+    })),
+    [snapshots],
+  );
 
   const reversed = [...snapshots].reverse();
 
@@ -313,18 +351,22 @@ export default function HistoryPage() {
                 />
                 <YAxis
                   tick={{ fill: '#94a3b8', fontSize: 11 }}
-                  tickFormatter={(v: number) => '$' + Math.round(Math.abs(v)).toLocaleString('en-US')}
+                  tickFormatter={(v: number) => (v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v)).toLocaleString('en-US')}
                   width={80}
                 />
+                <ReferenceLine y={0} stroke="#475569" />
                 <Tooltip
                   contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }}
                   itemStyle={{ color: '#e2e8f0' }}
                   labelStyle={{ color: '#94a3b8' }}
-                  formatter={(value: unknown) => ['$' + Math.round(Math.abs(Number(value))).toLocaleString('en-US'), 'Amount']}
+                  formatter={(value: unknown) => {
+                    const v = Number(value);
+                    return [(v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v)).toLocaleString('en-US'), 'Amount'];
+                  }}
                 />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="value">
                   {breakdownBarData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
+                    <Cell key={i} fill={entry.color} radius={entry.value >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4]} />
                   ))}
                 </Bar>
               </BarChart>
@@ -383,17 +425,35 @@ export default function HistoryPage() {
 
       {/* Chart */}
       <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-5">
-        <h2 className="text-lg font-semibold mb-4">Net Worth Over Time</h2>
+        <h2 className="text-lg font-semibold mb-3">Net Worth Over Time</h2>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {CHART_LINES.map((line) => (
+            <button
+              key={line.key}
+              onClick={() => toggleLine(line.key)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                activeLines.has(line.key)
+                  ? 'text-white border-transparent'
+                  : 'text-slate-400 border-slate-600 hover:text-slate-200 hover:border-slate-500'
+              }`}
+              style={activeLines.has(line.key) ? { backgroundColor: line.color } : undefined}
+            >
+              {line.label}
+            </button>
+          ))}
+        </div>
         {snapshots.length === 0 ? (
           <div className="text-slate-400 text-center py-16">No snapshots yet. Save your first snapshot above.</div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={snapshots}>
+            <AreaChart data={chartData}>
               <defs>
-                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0.02} />
-                </linearGradient>
+                {CHART_LINES.filter((l) => activeLines.has(l.key)).map((line) => (
+                  <linearGradient key={line.key} id={`color-${line.key}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={line.color} stopOpacity={activeLines.size === 1 ? 0.3 : 0.1} />
+                    <stop offset="95%" stopColor={line.color} stopOpacity={0.02} />
+                  </linearGradient>
+                ))}
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
               <XAxis
@@ -408,10 +468,23 @@ export default function HistoryPage() {
               />
               <Tooltip
                 contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }}
-                formatter={(value: unknown) => ['$' + Math.round(Number(value)).toLocaleString('en-US'), 'Net Worth']}
+                formatter={(value: unknown, name: unknown) => {
+                  const line = CHART_LINES.find((l) => l.key === name);
+                  return ['$' + Math.round(Number(value)).toLocaleString('en-US'), line?.label ?? name];
+                }}
                 labelFormatter={(label: unknown) => `Date: ${label}`}
               />
-              <Area type="monotone" dataKey="total" stroke="#6366f1" strokeWidth={2.5} fill="url(#colorTotal)" dot={{ r: 4, fill: '#6366f1', stroke: '#e2e8f0', strokeWidth: 1.5 }} />
+              {CHART_LINES.filter((l) => activeLines.has(l.key)).map((line) => (
+                <Area
+                  key={line.key}
+                  type="monotone"
+                  dataKey={line.key}
+                  stroke={line.color}
+                  strokeWidth={2}
+                  fill={`url(#color-${line.key})`}
+                  dot={{ r: 3, fill: line.color, stroke: '#e2e8f0', strokeWidth: 1 }}
+                />
+              ))}
             </AreaChart>
           </ResponsiveContainer>
         )}
