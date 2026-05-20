@@ -153,12 +153,14 @@ export default function StocksPage() {
   const totalCurrent = positions.reduce((t, p) => {
     const additionalShares = p.buys.reduce((s, b) => s + b.shares, 0);
     const soldShares = p.sells.reduce((s, sell) => s + sell.shares, 0);
-    const soldValue = p.sells.reduce((s, sell) => s + sell.shares * sell.price, 0);
     const remainingShares = p.shares + additionalShares - soldShares;
-    return t + soldValue + remainingShares * p.current_price;
+    return t + remainingShares * p.current_price;
+  }, 0);
+  const totalSoldValue = positions.reduce((t, p) => {
+    return t + p.sells.reduce((s, sell) => s + sell.shares * sell.price, 0);
   }, 0);
   const totalDividends = positions.reduce((t, p) => t + p.total_dividends, 0);
-  const capitalGain = totalCurrent - totalInvested;
+  const capitalGain = totalCurrent + totalSoldValue - totalInvested;
   const totalPL = capitalGain + totalDividends;
   const totalPLPct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
 
@@ -215,11 +217,11 @@ export default function StocksPage() {
 
       {/* Symbol summary (aggregated across brokers) */}
       {(() => {
-        const symbolMap: Record<string, { name: string; totalShares: number; totalInvested: number; totalCurrent: number; totalDividends: number; currentPrice: number; currency: string }> = {};
+        const symbolMap: Record<string, { name: string; totalShares: number; totalInvested: number; totalCurrent: number; totalSoldValue: number; totalDividends: number; currentPrice: number; currency: string }> = {};
         for (const pos of positions) {
           if (!pos.symbol) continue;
           const sym = pos.symbol.toUpperCase();
-          if (!symbolMap[sym]) symbolMap[sym] = { name: '', totalShares: 0, totalInvested: 0, totalCurrent: 0, totalDividends: 0, currentPrice: pos.current_price, currency: pos.currency };
+          if (!symbolMap[sym]) symbolMap[sym] = { name: '', totalShares: 0, totalInvested: 0, totalCurrent: 0, totalSoldValue: 0, totalDividends: 0, currentPrice: pos.current_price, currency: pos.currency };
           if (pos.name && !symbolMap[sym].name) symbolMap[sym].name = pos.name;
           const additionalInvested = pos.buys.reduce((s, b) => s + b.shares * b.price, 0);
           const additionalShares = pos.buys.reduce((s, b) => s + b.shares, 0);
@@ -228,7 +230,8 @@ export default function StocksPage() {
           const remainingShares = pos.shares + additionalShares - soldShares;
           symbolMap[sym].totalShares += remainingShares;
           symbolMap[sym].totalInvested += pos.shares * pos.buy_price + additionalInvested;
-          symbolMap[sym].totalCurrent += soldValue + remainingShares * pos.current_price;
+          symbolMap[sym].totalCurrent += remainingShares * pos.current_price;
+          symbolMap[sym].totalSoldValue = (symbolMap[sym].totalSoldValue || 0) + soldValue;
           symbolMap[sym].totalDividends += pos.total_dividends;
           symbolMap[sym].currentPrice = pos.current_price;
         }
@@ -244,7 +247,7 @@ export default function StocksPage() {
               <div className="text-[10px] text-slate-500 uppercase text-right">Current Value</div>
               <div className="text-[10px] text-slate-500 uppercase text-right">P/L</div>
               {symbols.map(([sym, data]) => {
-                const pl = data.totalCurrent - data.totalInvested + data.totalDividends;
+                const pl = data.totalCurrent + data.totalSoldValue - data.totalInvested + data.totalDividends;
                 const plPct = data.totalInvested > 0 ? (pl / data.totalInvested) * 100 : 0;
                 return (
                   <React.Fragment key={sym}>
@@ -272,9 +275,8 @@ export default function StocksPage() {
         const brokerCurrent = brokerPositions.reduce((t, p) => {
           const additionalShares = p.buys.reduce((s, b) => s + b.shares, 0);
           const soldShares = p.sells.reduce((s, sell) => s + sell.shares, 0);
-          const soldValue = p.sells.reduce((s, sell) => s + sell.shares * sell.price, 0);
           const remainingShares = p.shares + additionalShares - soldShares;
-          return t + soldValue + remainingShares * p.current_price;
+          return t + remainingShares * p.current_price;
         }, 0);
 
         return (
@@ -299,8 +301,8 @@ export default function StocksPage() {
               const soldShares = pos.sells.reduce((s, sell) => s + sell.shares, 0);
               const soldValue = pos.sells.reduce((s, sell) => s + sell.shares * sell.price, 0);
               const remainingShares = pos.shares + additionalShares - soldShares;
-              const currentVal = soldValue + remainingShares * pos.current_price;
-              const capPL = currentVal - invested;
+              const currentVal = remainingShares * pos.current_price;
+              const capPL = currentVal + soldValue - invested;
               const posTotalPL = capPL + pos.total_dividends;
               const plPct = invested > 0 ? (posTotalPL / invested) * 100 : 0;
 
