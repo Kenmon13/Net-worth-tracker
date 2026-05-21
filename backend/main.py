@@ -533,8 +533,12 @@ def get_forex_rates(user_id: int = Depends(get_current_user)):
         "SELECT DISTINCT currency FROM other_assets WHERE currency != 'SGD' AND user_id=?",
         (user_id,),
     ).fetchall()
+    position_rows = db.execute(
+        "SELECT DISTINCT currency FROM stock_positions WHERE currency != '' AND currency != 'SGD' AND user_id=?",
+        (user_id,),
+    ).fetchall()
     db.close()
-    currencies = list(set([row[0] for row in rows] + [row[0] for row in other_liquid_rows] + [row[0] for row in other_rows]))
+    currencies = list(set([row[0] for row in rows] + [row[0] for row in other_liquid_rows] + [row[0] for row in other_rows] + [row[0] for row in position_rows]))
 
     rates: dict[str, float] = {"SGD": 1.0}
     for cur in currencies:
