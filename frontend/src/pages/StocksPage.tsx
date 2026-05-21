@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Position } from '../types';
+import type { ForexRates, Position } from '../types';
 import * as api from '../api';
 import { fmt } from '../utils';
 import NumberInput from '../components/NumberInput';
@@ -13,6 +13,7 @@ const BROKERS_LIST = [
 
 export default function StocksPage() {
   const [positions, setPositions] = useState<Position[]>([]);
+  const [forexRates, setForexRates] = useState<ForexRates>({ SGD: 1 });
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [brokerInput, setBrokerInput] = useState('');
@@ -20,9 +21,12 @@ export default function StocksPage() {
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
+  const toSGD = useCallback((amount: number, currency: string) => amount * (forexRates[currency] || 1), [forexRates]);
+
   const refresh = useCallback(async () => {
-    const data = await api.getPositions();
+    const [data, rates] = await Promise.all([api.getPositions(), api.getForexRates()]);
     setPositions(data);
+    setForexRates(rates);
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -145,21 +149,21 @@ export default function StocksPage() {
     }
   }
 
-  // Totals
+  // Totals (converted to SGD)
   const totalInvested = positions.reduce((t, p) => {
     const additionalInvested = p.buys.reduce((s, b) => s + b.shares * b.price, 0);
-    return t + p.shares * p.buy_price + additionalInvested;
+    return t + toSGD(p.shares * p.buy_price + additionalInvested, p.currency);
   }, 0);
   const totalCurrent = positions.reduce((t, p) => {
     const additionalShares = p.buys.reduce((s, b) => s + b.shares, 0);
     const soldShares = p.sells.reduce((s, sell) => s + sell.shares, 0);
     const remainingShares = p.shares + additionalShares - soldShares;
-    return t + remainingShares * p.current_price;
+    return t + toSGD(remainingShares * p.current_price, p.currency);
   }, 0);
   const totalSoldValue = positions.reduce((t, p) => {
-    return t + p.sells.reduce((s, sell) => s + sell.shares * sell.price, 0);
+    return t + toSGD(p.sells.reduce((s, sell) => s + sell.shares * sell.price, 0), p.currency);
   }, 0);
-  const totalDividends = positions.reduce((t, p) => t + p.total_dividends, 0);
+  const totalDividends = positions.reduce((t, p) => t + toSGD(p.total_dividends, p.currency), 0);
   const capitalGain = totalCurrent + totalSoldValue - totalInvested;
   const totalPL = capitalGain + totalDividends;
   const totalPLPct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
@@ -170,13 +174,9 @@ export default function StocksPage() {
       <p className="text-slate-400 mb-6">Track stock positions, dividends, and P&L</p>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-          <div className="text-xs text-slate-400 uppercase mb-1">Invested</div>
-          <div className="text-xl font-bold">{fmt(totalInvested)}</div>
-        </div>
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-          <div className="text-xs text-slate-400 uppercase mb-1">Current Value</div>
+          <div className="text-xs text-slate-400 uppercase mb-1">Current Value (SGD)</div>
           <div className="text-xl font-bold">{fmt(totalCurrent)}</div>
         </div>
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
@@ -229,10 +229,10 @@ export default function StocksPage() {
           const soldValue = pos.sells.reduce((s, sell) => s + sell.shares * sell.price, 0);
           const remainingShares = pos.shares + additionalShares - soldShares;
           symbolMap[sym].totalShares += remainingShares;
-          symbolMap[sym].totalInvested += pos.shares * pos.buy_price + additionalInvested;
-          symbolMap[sym].totalCurrent += remainingShares * pos.current_price;
-          symbolMap[sym].totalSoldValue = (symbolMap[sym].totalSoldValue || 0) + soldValue;
-          symbolMap[sym].totalDividends += pos.total_dividends;
+          symbolMap[sym].totalInvested += toSGD(pos.shares * pos.buy_price + additionalInvested, pos.currency);
+          symbolMap[sym].totalCurrent += toSGD(remainingShares * pos.current_price, pos.currency);
+          symbolMap[sym].totalSoldValue = (symbolMap[sym].totalSoldValue || 0) + toSGD(soldValue, pos.currency);
+          symbolMap[sym].totalDividends += toSGD(pos.total_dividends, pos.currency);
           symbolMap[sym].currentPrice = pos.current_price;
         }
         const symbols = Object.entries(symbolMap).sort((a, b) => b[1].totalCurrent - a[1].totalCurrent);
@@ -276,7 +276,7 @@ export default function StocksPage() {
           const additionalShares = p.buys.reduce((s, b) => s + b.shares, 0);
           const soldShares = p.sells.reduce((s, sell) => s + sell.shares, 0);
           const remainingShares = p.shares + additionalShares - soldShares;
-          return t + remainingShares * p.current_price;
+          return t + toSGD(remainingShares * p.current_price, p.currency);
         }, 0);
 
         return (
@@ -305,6 +305,7 @@ export default function StocksPage() {
               const capPL = currentVal + soldValue - invested;
               const posTotalPL = capPL + pos.total_dividends;
               const plPct = invested > 0 ? (posTotalPL / invested) * 100 : 0;
+              const currentValSGD = toSGD(currentVal, pos.currency);
 
               return (
                 <div key={pos.id} className="bg-slate-950 border border-slate-700 rounded-lg p-3 mb-3">
@@ -355,9 +356,14 @@ export default function StocksPage() {
                         onChange={(e) => handleChange(pos.id, 'buy_date', e.target.value)}
                       />
                     </div>
-                    <div className="w-[70px] shrink-0">
-                      <div className="text-[10px] text-slate-500 uppercase mb-0.5">Current</div>
-                      <div className="text-sm text-slate-200 py-1.5">{pos.current_price ? fmt(pos.current_price) : '—'}</div>
+                    <div className="w-[90px] shrink-0">
+                      <div className="text-[10px] text-slate-500 uppercase mb-0.5">Current{pos.currency && pos.currency !== 'SGD' ? ` (${pos.currency})` : ''}</div>
+                      <div className="text-sm text-slate-200 py-1.5">
+                        {pos.current_price ? fmt(pos.current_price) : '—'}
+                        {pos.current_price && pos.currency && pos.currency !== 'SGD' && (
+                          <div className="text-[10px] text-slate-500">{fmt(currentValSGD)} SGD</div>
+                        )}
+                      </div>
                     </div>
                     <div className="w-[60px] shrink-0">
                       <div className="text-[10px] text-slate-500 uppercase mb-0.5">Remaining</div>
@@ -371,7 +377,12 @@ export default function StocksPage() {
                       <div className="text-[10px] text-slate-500 uppercase mb-0.5">P/L</div>
                       <div className={`text-sm font-semibold py-1.5 ${posTotalPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {pos.current_price || pos.sells.length > 0 ? (
-                          <>{posTotalPL >= 0 ? '+' : ''}{fmt(posTotalPL)} <span className="text-xs">({posTotalPL >= 0 ? '+' : ''}{plPct.toFixed(1)}%)</span></>
+                          <>
+                            {posTotalPL >= 0 ? '+' : ''}{fmt(posTotalPL)} <span className="text-xs">({posTotalPL >= 0 ? '+' : ''}{plPct.toFixed(1)}%)</span>
+                            {pos.currency && pos.currency !== 'SGD' && (
+                              <div className="text-[10px] text-slate-500">{toSGD(posTotalPL, pos.currency) >= 0 ? '+' : ''}{fmt(toSGD(posTotalPL, pos.currency))} SGD</div>
+                            )}
+                          </>
                         ) : '—'}
                       </div>
                     </div>
